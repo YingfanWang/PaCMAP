@@ -5,14 +5,30 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully parameter tuning. 
 
 # Installation
-To install PaCMAP, 
+
+To install PaCMAP, you can use pip:
+
+`pip install pacmap`
 
 # Benchmarks
 
+List some benchmarks and examples for PaCMAP
+
 # Parameters
-The list of parameters is given below.
+
+The list of (important) parameters is given below.
+
+- n_neighbors
+n_neighbors controls the number of neighbors that are considered in the k-Nearest Neighbor graph
+
+- mid_ratio
+
+- FP_ratio
+
+
 
 # Citation
 
 # License
-Inherited from blablabla.
+
+Please see the license file.
