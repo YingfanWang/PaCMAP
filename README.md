@@ -5,6 +5,11 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully parameter tuning. 
 
 # Installation
+Requirements:
+- numpy
+- sklearn
+- annoy
+- numba
 
 To install PaCMAP, you can use pip:
 
