@@ -19,7 +19,9 @@ To install PaCMAP, you can use pip:
 
 The following are DR algorithms' performance on two datasets: MNIST and Mammoth that repectively demonstrate local and global structure's preservation:
 
-![image](http://gitee.com/YingfanWang/PaCMAP/raw/master/images/MNIST.jpg)
+![MNIST](http://github.com/YingfanWang/PaCMAP/raw/master/images/MNIST.jpg)
+
+![Mammoth](http://github.com/YingfanWang/PaCMAP/raw/master/images/Mammoth.jpg)
 
 
 # Parameters
