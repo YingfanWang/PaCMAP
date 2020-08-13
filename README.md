@@ -23,8 +23,7 @@ List some benchmarks and examples for PaCMAP
 
 The list of (important) parameters is given below.
 
-- n_neighbors
-n_neighbors controls the number of neighbors that are considered in the k-Nearest Neighbor graph
+- n_neighbors: n_neighbors controls the number of neighbors considered in the k-Nearest Neighbor graph
 
 - mid_ratio
 
