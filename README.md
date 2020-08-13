@@ -17,7 +17,8 @@ To install PaCMAP, you can use pip:
 
 # Benchmarks
 
-List some benchmarks and examples for PaCMAP
+The following are DR algorithms' performance on two datasets: MNIST and Mammoth that repectively demonstrate local and global structure's preservation:
+
 
 # Parameters
 
