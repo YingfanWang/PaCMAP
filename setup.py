@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pacmap",
-    version="1.0",
+    version="0.1",
     author="Yingfan Wang, Haiyang Huang, Cynthia Rudin, Yaron Shaposhnik",
-    author_email="yingfan.wang@duke.edu",
-    description="A small example package",
+    description="the official implementation for PaCMAP: Pairwise Controlled" + \
+                " Manifold Approximation Projection",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://https://github.com/YingfanWang/PaCMAP",
-    packages=setuptools.find_packages(),
+    packages=['pacmap'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: Unix",
@@ -22,4 +22,9 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
     ],
     python_requires='>=3.6',
+    install_requires=['scikit-learn >= 0.20',
+                        'numba >= 0.34',
+                        'annoy >= 1.11',
+                        'numpy >= 1.18']
+
 )

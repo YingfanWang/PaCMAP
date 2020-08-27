@@ -1,0 +1,4 @@
+numpy
+numba
+scikit-learn
+annoy
