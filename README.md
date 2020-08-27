@@ -80,7 +80,7 @@ Other parameters include:
 
 # Reproducing the experiments
 We have provided the code we use to run experiment for better reproducibility. The code are separated into three parts, in three folders, respectively:
-- `data`, which includes all the datasets we used, preprocessed into the file format each DR method use. Notice that since the Mouse single cell RNA sequence dataset is too big (~4GB), you may need to download from the [link](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE93374) here. COIL-100, MNIST and FMNIST dataset is compressed, and you need to unzip them before using.
+- `data`, which includes all the datasets we used, preprocessed into the file format each DR method use. Notice that since the Mouse single cell RNA sequence dataset is too big (~4GB), you may need to download from the [link](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE93374) here. MNIST and FMNIST dataset is compressed, and you need to unzip them before using. COIL-100 dataset is still too large after compressed, please preprocess it using the file Preprocessing.ipynb on your own.
 - `experiments`, which includes all the scripts we use to produce DR results.
 - `evaluation`, which includes all the scripts we use to evaluate DR results, stated in Section 8 in our paper.
 
