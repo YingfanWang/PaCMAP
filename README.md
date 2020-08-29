@@ -30,16 +30,22 @@ The `pacmap` package is designed to be compatible with `scikit-learn`, meaning t
 ```
 import pacmap
 import numpy as np
+import matplotlib.pyplot as plt
 
 # loading preprocessed coil_20 dataset
 # you can change it with any dataset that is in the numpy array format
 X = np.load("./data/coil_20.npy", allow_pickle=True)
+y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
 
 # initializing the pacmap instance
 embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)
 
 # fit the data
 X_transformed = embedding.fit_transform(X, init="pca")
+
+# visualize the embedding
+fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+ax.scatter(X[:, 0], X[:, 1], cmap="Spectral", c=y, s=0.6)
 ```
 
 
