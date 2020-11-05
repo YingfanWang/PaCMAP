@@ -279,7 +279,8 @@ def pacmap(
                 X -= np.min(X)
                 X /= np.max(X)
                 X -= np.mean(X, axis=0)
-                print(X)
+                if verbose:
+                    print(X)
         pair_neighbors, pair_MN, pair_FP = generate_pair(
             X, n_neighbors, n_MN, n_FP, distance, verbose
         )
