@@ -55,25 +55,25 @@ def t_repul(x):
 def t_integ_attr(b):
     res = np.zeros(b.shape[0])
     for i in range(b.shape[0]):
-        res[i] = integrate.quad(attr, 0, b[i], points=[0])[0]
+        res[i] = integrate.quad(t_attr, 0, b[i], points=[0])[0]
     return res
 
 def t_integ_repul(b):
     res = np.zeros(b.shape[0])
     for i in range(b.shape[0]):
-        res[i] = integrate.quad(repul, 0, b[i], points=[0])[0]
+        res[i] = integrate.quad(t_repul, 0, b[i], points=[0])[0]
     return res
 
 def t_integ_attr_(b):
     res = np.zeros(b.shape)
     for i in range(b.shape[1]):
-        res[0][i] = integrate.quad(attr, 0, b[0][i], points=[0])[0]
+        res[0][i] = integrate.quad(t_attr, 0, b[0][i], points=[0])[0]
     return res
 
 def t_integ_repul_(b):
     res = np.zeros(b.shape)
     for i in range(b.shape[0]):
-        res[i][0] = integrate.quad(repul, 0, b[i][0], points=[0])[0]
+        res[i][0] = integrate.quad(t_repul, 0, b[i][0], points=[0])[0]
     return res
 
 
