@@ -38,7 +38,8 @@ X = np.load("./data/coil_20.npy", allow_pickle=True)
 y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
 
 # initializing the pacmap instance
-embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)
+# Setting n_neighbors to "None" leads to a default choice shown below in "parameter" section
+embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0) 
 
 # fit the data (The index of transformed data corresponds to the index of the original data)
 X_transformed = embedding.fit_transform(X, init="pca")
