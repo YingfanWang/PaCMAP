@@ -392,8 +392,8 @@ class PaCMAP(BaseEstimator):
                 self.n_neighbors = 10
             else:
                 self.n_neighbors = int(round(10 + 15 * (np.log10(n) - 4)))
-        self.n_MN = int(round(n_neighbors * self.MN_ratio))
-        self.n_FP = int(round(n_neighbors * self.FP_ratio))
+        self.n_MN = int(round(self.n_neighbors * self.MN_ratio))
+        self.n_FP = int(round(self.n_neighbors * self.FP_ratio))
         if self.n_neighbors < 1:
             raise ValueError("The number of nearest neighbors can't be less than 1")
         if self.n_FP < 1:
