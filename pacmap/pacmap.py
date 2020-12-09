@@ -346,7 +346,7 @@ def pacmap(
 class PaCMAP(BaseEstimator):
     def __init__(self,
         n_dims=2,
-        n_neighbors=10,
+        n_neighbors=None,
         MN_ratio=0.5,
         FP_ratio=2.0,
         pair_neighbors = None,
@@ -361,8 +361,8 @@ class PaCMAP(BaseEstimator):
     ):
         self.n_dims = n_dims
         self.n_neighbors = n_neighbors
-        self.n_MN = int((n_neighbors * MN_ratio) // 1)
-        self.n_FP = int((n_neighbors * FP_ratio) // 1)
+        self.MN_ratio = MN_ratio
+        self.FP_ratio = FP_ratio
         self.pair_neighbors = pair_neighbors
         self.pair_MN = pair_MN
         self.pair_FP = pair_FP
@@ -375,35 +375,44 @@ class PaCMAP(BaseEstimator):
 
         if self.n_dims < 2:
             raise ValueError("The number of projection dimensions must be at least 2")
-        if self.n_neighbors < 1:
-            raise ValueError("The number of nearest neighbors can't be less than 1")
-        if self.n_FP < 1:
-            raise ValueError("The number of further points can't be less than 1")
         if self.lr <= 0:
             raise ValueError("The learning rate must be larger than 0")
         if self.distance == "hamming" and apply_pca:
             warnings.warn("apply_pca = True for Hamming distance.")
-
-        if self.verbose:
-            print(
-                "PaCMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={},"
-                "lr={}, n_iters={}, apply_pca={}, opt_method='adam', verbose={})".format(
-                    n_neighbors,
-                    self.n_MN,
-                    self.n_FP,
-                    distance,
-                    lr,
-                    num_iters,
-                    apply_pca,
-                    verbose,
-                )
-            )
-
         if not self.apply_pca:
             print("running ANNOY on high-dimensional data. nearest-neighbor search may be slow!")
 
     def fit(self, X, init=None):
         X = X.astype(np.float32)
+        n, dim = X.shape
+        if n <= 0:
+            raise ValueError("The sample size must be larger than 0")
+        if self.n_neighbors is None:
+            if n <= 10000:
+                self.n_neighbors = 10
+            else:
+                self.n_neighbors = int(round(10 + 15 * (np.log10(n) - 4)))
+        self.n_MN = int(round(n_neighbors * self.MN_ratio))
+        self.n_FP = int(round(n_neighbors * self.FP_ratio))
+        if self.n_neighbors < 1:
+            raise ValueError("The number of nearest neighbors can't be less than 1")
+        if self.n_FP < 1:
+            raise ValueError("The number of further points can't be less than 1")
+        if self.verbose:
+            print(
+                "PaCMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={},"
+                "lr={}, n_iters={}, apply_pca={}, opt_method='adam', verbose={}, intermediate={})".format(
+                    self.n_neighbors,
+                    self.n_MN,
+                    self.n_FP,
+                    self.distance,
+                    self.lr,
+                    self.num_iters,
+                    self.apply_pca,
+                    self.verbose,
+                    self.intermediate
+                )
+            )
         self.embedding_, self.intermediate_states, self.pair_neighbors, self.pair_MN, self.pair_FP = pacmap(
             X,
             self.n_dims,
