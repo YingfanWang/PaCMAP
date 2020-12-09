@@ -97,8 +97,13 @@ After downloading the code, you may need to specify some of the paths in the scr
 If you use PaCMAP in your publication, or you used the implementation in this repository, please cite our preprint here:
 
 ```
-@article{
-    #TODO
+@misc{wang2020understanding,
+      title={Understanding How Dimension Reduction Tools Work: An Empirical Approach to Deciphering t-SNE, UMAP, TriMAP, and PaCMAP for Data Visualization}, 
+      author={Yingfan Wang and Haiyang Huang and Cynthia Rudin and Yaron Shaposhnik},
+      year={2020},
+      eprint={2012.04456},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
 }
 ```
 
