@@ -443,6 +443,20 @@ class PaCMAP(BaseEstimator):
         if self.verbose:
             print("sampling pairs")
         X = X.astype(np.float32)
+        n, dim = X.shape
+        if n <= 0:
+            raise ValueError("The sample size must be larger than 0")
+        if self.n_neighbors is None:
+            if n <= 10000:
+                self.n_neighbors = 10
+            else:
+                self.n_neighbors = int(round(10 + 15 * (np.log10(n) - 4)))
+        self.n_MN = int(round(self.n_neighbors * self.MN_ratio))
+        self.n_FP = int(round(self.n_neighbors * self.FP_ratio))
+        if self.n_neighbors < 1:
+            raise ValueError("The number of nearest neighbors can't be less than 1")
+        if self.n_FP < 1:
+            raise ValueError("The number of further points can't be less than 1")
         if self.distance != "hamming":
             if X.shape[1] > 100 and self.apply_pca:
                 X -= np.mean(X, axis=0)
