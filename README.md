@@ -35,7 +35,8 @@ import matplotlib.pyplot as plt
 # loading preprocessed coil_20 dataset
 # you can change it with any dataset that is in the ndarray format, with the shape (N, D)
 # where N is the number of samples and D is the dimension of each sample
-X = np.load("./data/coil_20.npy", allow_pickle=True).reshape(1440, 128*128)
+X = np.load("./data/coil_20.npy", allow_pickle=True)
+X = X.reshape(X.shape[0], -1)
 y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
 
 # initializing the pacmap instance
