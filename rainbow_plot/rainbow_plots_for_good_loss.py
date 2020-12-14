@@ -3,7 +3,7 @@ import numpy as np
 import umap
 from scipy import integrate
 from pacmap import PaCMAP
-from data_prepare import data_prep
+from experiments.run_experiments import data_prep
 
 
 cmap_fig = plt.cm.get_cmap("Spectral")
