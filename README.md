@@ -48,7 +48,7 @@ X_transformed = embedding.fit_transform(X, init="pca")
 
 # visualize the embedding
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-ax.scatter(X[:, 0], X[:, 1], cmap="Spectral", c=y, s=0.6)
+ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6)
 ```
 
 
