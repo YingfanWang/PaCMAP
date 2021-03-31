@@ -2,7 +2,7 @@
 
 PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reduction method that can be used for visualization, preserving both local and global structure of the data in original space. PaCMAP optimizes the low dimensional embedding using three kinds of pairs of points: neighbor pairs (pair_neighbors), mid-near pair (pair_MN), and further pairs (pair_FP).
 
-Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the paper](#TODO)
+Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the paper](https://arxiv.org/abs/2012.04456).
 
 # Installation
 You would require the following packages to fully use pacmap on your machine:
@@ -11,7 +11,14 @@ You would require the following packages to fully use pacmap on your machine:
 - annoy
 - numba
 
-You can use the following command to install these dependencies using pip:
+You can use pip to install pacmap from PyPI. It will automatically install the dependencies for you:
+
+```
+pip install pacmap
+```
+
+
+Alternatively, you can use the following command to install these dependencies:
 ```
 pip install numpy
 pip install scikit-learn
@@ -19,11 +26,6 @@ pip install annoy
 pip install numba
 ```
 
-To install PaCMAP, you can use pip:
-
-```
-pip install pacmap
-```
 # Usage
 The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [this paragraph](#installation), and then import the module. The following code clip includes a use case about how to use pacmap on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
 
@@ -41,7 +43,7 @@ y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
 
 # initializing the pacmap instance
 # Setting n_neighbors to "None" leads to a default choice shown below in "parameter" section
-embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0) 
+embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0) 
 
 # fit the data (The index of transformed data corresponds to the index of the original data)
 X_transformed = embedding.fit_transform(X, init="pca")
