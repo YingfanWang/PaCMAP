@@ -4,6 +4,7 @@ import numba
 from annoy import AnnoyIndex
 from sklearn.decomposition import TruncatedSVD
 from sklearn.decomposition import PCA
+from sklearn import preprocessing
 import time
 import math
 import datetime
@@ -297,8 +298,10 @@ def pacmap(
             Y = 0.01 * PCA(n_components=n_dims).fit_transform(X).astype(np.float32)
     elif Yinit == "random":
         Y = np.random.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
-    else:
-        Y = Yinit.astype(np.float32)
+    else: # user_supplied matrix
+        Yinit = Yinit.astype(np.float32)
+        scaler = preprocessing.StandardScaler().fit(Yinit)
+        Y = scaler.transform(Yinit) * 0.0001
 
     w_MN_init = 1000.
     beta1 = 0.9

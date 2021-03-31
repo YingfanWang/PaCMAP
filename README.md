@@ -75,7 +75,7 @@ The list of the most important parameters is given below. Changing these values 
 - `FP_ratio`: the ratio of the number of further pairs to the number of neighbors, `n_FP` = <img src="https://latex.codecogs.com/gif.latex?\lfloor" title="\lfloor" /> `n_neighbors * FP_ratio` <img src="https://latex.codecogs.com/gif.latex?\rfloor" title="\rfloor" />  Default to 2.
 
 The initialization is also important to the result, but it's a parameter of the `fit` and `fit_transform` function.
-- `init`: the initialization of the lower dimensional embedding. One of `"pca"` or `"random"`. Default to `"pca"`.
+- `init`: the initialization of the lower dimensional embedding. One of `"pca"` or `"random"`, or a user-provided numpy ndarray with the shape (N, 2). Default to `"pca"`.
 
 Other parameters include:
 - `num_iters`: number of iterations. Default to 450. 450 iterations is enough for most dataset to converge.
