@@ -4,6 +4,16 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the paper](https://arxiv.org/abs/2012.04456).
 
+# Release Notes
+- 0.3
+  
+  Now supports user-specified matrix as initialization through `init` parameter. The matrix must be an numpy ndarray with the shape (N, 2).
+- 0.2
+  
+  Adding adaptive default value for `n_neighbors`: for large datasets with sample size N > 10000, the default value will be set to 10 + 15 * (log10(N) - 4), rounding to the nearest integer.
+- 0.1
+
+  Initial Release
 # Installation
 You would require the following packages to fully use pacmap on your machine:
 - numpy
