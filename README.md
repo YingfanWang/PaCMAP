@@ -5,6 +5,13 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the paper](https://arxiv.org/abs/2012.04456).
 
 # Release Notes
+- 0.4
+  
+  Now supports user-specified nearest neighbor pairs. See section `How to use user-specified nearest neighbor` below.
+
+  The `fit` function and the `fit_transform` function now has an extra parameter `save_pairs` that decides whether the pairs sampled in this run will be saved to save time for reproducing experiments with other hyperparameters (default to `True`). 
+
+  ** This version is not currently updated to PyPI. **
 - 0.3
   
   Now supports user-specified matrix as initialization through `init` parameter. The matrix must be an numpy ndarray with the shape (N, 2).
@@ -37,7 +44,7 @@ pip install numba
 ```
 
 # Usage
-The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [this paragraph](#installation), and then import the module. The following code clip includes a use case about how to use pacmap on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
+The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [this paragraph](#installation), and then import the module. The following code clip includes a use case about how to use PaCMAP on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
 
 ```
 import pacmap
@@ -87,7 +94,7 @@ The list of the most important parameters is given below. Changing these values 
 - `FP_ratio`: the ratio of the number of further pairs to the number of neighbors, `n_FP` = <img src="https://latex.codecogs.com/gif.latex?\lfloor" title="\lfloor" /> `n_neighbors * FP_ratio` <img src="https://latex.codecogs.com/gif.latex?\rfloor" title="\rfloor" />  Default to 2.
 
 The initialization is also important to the result, but it's a parameter of the `fit` and `fit_transform` function.
-- `init`: the initialization of the lower dimensional embedding. One of `"pca"` or `"random"`, or a user-provided numpy ndarray with the shape (N, 2). Default to `"pca"`.
+- `init`: the initialization of the lower dimensional embedding. One of `"pca"` or `"random"`, or a user-provided numpy ndarray with the shape (N, 2). Default to `"random"`.
 
 Other parameters include:
 - `num_iters`: number of iterations. Default to 450. 450 iterations is enough for most dataset to converge.
@@ -96,6 +103,60 @@ Other parameters include:
 - `lr`: learning rate of the AdaGrad optimizer. Default to 1.
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
 - `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_dims`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
+
+# How to use user-specified nearest neighbor
+In version 0.4, we have provided a new option to allow users to use their own nearest neighbors when mapping large-scale
+datasets. The following code clip includes a use case about how to use PaCMAP with the user-specified nearest neighbors:
+
+```
+import pacmap
+import numpy as np
+import matplotlib.pyplot as plt
+from annoy import AnnoyIndex
+
+# loading preprocessed coil_20 dataset
+X = np.load("./data/coil_20.npy", allow_pickle=True)
+X = X.reshape(X.shape[0], -1)
+y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
+
+# create nearest neighbor pairs
+# here we use AnnoyIndex as an example, but the process can be done by any
+# external NN library that provides neighbors into a matrix of the shape
+# (n, n_neighbors_extra), where n_neighbors_extra is greater or equal to
+# n_neighbors in the following example.
+
+n, dim = X.shape
+n_neighbors = 10
+tree = AnnoyIndex(dim, metric='euclidean')
+for i in range(n):
+    tree.add_item(i, X[i, :])
+tree.build(20)
+
+nbrs = np.zeros((n, 20), dtype=np.int32)
+for i in range(n):
+    nbrs_ = tree.get_nns_by_item(i, 20 + 1) # The first nbr is always the point itself
+    nbrs[i, :] = nbrs_[1:]
+
+scaled_dist = np.ones((n, n_neighbors)) # No scaling is needed
+
+# Type casting is needed for numba acceleration
+X = X.astype(np.float32)
+scaled_dist = scaled_dist.astype(np.float32)
+
+# make sure n_neighbors is the same number you want when fitting the data
+pair_neighbors = pacmap.sample_neighbors_pair(X, scaled_dist, nbrs, np.int32(n_neighbors))
+
+# initializing the pacmap instance
+# feed the pair_neighbors into the instance
+embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=n_neighbors, MN_ratio=0.5, FP_ratio=2.0, pair_neighbors=pair_neighbors) 
+
+# fit the data (The index of transformed data corresponds to the index of the original data)
+X_transformed = embedding.fit_transform(X, init="pca")
+
+# visualize the embedding
+fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6)
+```
 
 
 
