@@ -10,8 +10,6 @@ Previous dimensionality reduction techniques focus on either local structure (e.
   Now supports user-specified nearest neighbor pairs. See section `How to use user-specified nearest neighbor` below.
 
   The `fit` function and the `fit_transform` function now has an extra parameter `save_pairs` that decides whether the pairs sampled in this run will be saved to save time for reproducing experiments with other hyperparameters (default to `True`). 
-
-  ** This version is not currently updated to PyPI. **
 - 0.3
   
   Now supports user-specified matrix as initialization through `init` parameter. The matrix must be an numpy ndarray with the shape (N, 2).
