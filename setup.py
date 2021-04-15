@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pacmap",
-    version="0.1",
+    version="0.3",
     author="Yingfan Wang, Haiyang Huang, Cynthia Rudin, Yaron Shaposhnik",
     description="the official implementation for PaCMAP: Pairwise Controlled" + \
                 " Manifold Approximation Projection",
