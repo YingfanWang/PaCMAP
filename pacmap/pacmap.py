@@ -390,7 +390,7 @@ def pacmap(
 class PaCMAP(BaseEstimator):
     def __init__(self,
                  n_dims=2,
-                 n_neighbors=None,
+                 n_neighbors=10,
                  MN_ratio=0.5,
                  FP_ratio=2.0,
                  pair_neighbors=None,
