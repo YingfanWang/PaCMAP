@@ -5,6 +5,9 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the paper](https://arxiv.org/abs/2012.04456).
 
 # Release Notes
+- 0.4.1
+
+  Now the default value for `n_neighbors` is 10. To enable automatic parameter selection, please set it to `None`.
 - 0.4
   
   Now supports user-specified nearest neighbor pairs. See section `How to use user-specified nearest neighbor` below.
