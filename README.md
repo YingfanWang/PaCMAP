@@ -5,6 +5,13 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the paper](https://arxiv.org/abs/2012.04456).
 
 # Release Notes
+- 0.5.0
+  
+  Now support setting `random_state` when creating `pacmap.PaCMAP` instances for better reproducibility.
+
+  Fix the default initialization to `PCA` to resolve inconsistency between code and description.
+
+  **Setting the `random_state` will affect the numpy random seed in your local environment. However, you may still get different results even if the `random_state` parameter is set to be the same. This is because numba parallelization makes some of the functions undeterministic.** That being said, fixing the random state will always give you the same set of pairs and initialization, which ensure the difference is minimal.
 - 0.4.1
 
   Now the default value for `n_neighbors` is 10. To enable automatic parameter selection, please set it to `None`.
