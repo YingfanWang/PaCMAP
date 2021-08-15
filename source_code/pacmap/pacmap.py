@@ -137,11 +137,11 @@ def sample_MN_pair(X, n_MN):
 
 @numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True)
 def sample_MN_pair_deterministic(X, n_MN, random_state):
-    np.random.seed(random_state)
     n = X.shape[0]
     pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
         for jj in range(n_MN):
+            np.random.seed(random_state)
             sampled = np.random.randint(0, n, 6)
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
@@ -170,11 +170,11 @@ def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
 
 @numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4,i4)", parallel=True, nogil=True)
 def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_state):
-    np.random.seed(random_state)
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
         for k in numba.prange(n_FP):
+            np.random.seed(random_state)
             FP_index = sample_FP(
                 n_FP, n, pair_neighbors[i*n_neighbors: i*n_neighbors + n_neighbors][1])
             pair_FP[i*n_FP + k][0] = i
@@ -261,7 +261,8 @@ def generate_pair(
     n, dim = X.shape
     n_neighbors_extra = min(n_neighbors + 50, n)
     tree = AnnoyIndex(dim, metric=distance)
-    tree.set_seed(_RANDOM_STATE)
+    if _RANDOM_STATE is not None:
+        tree.set_seed(_RANDOM_STATE)
     for i in range(n):
         tree.add_item(i, X[i, :])
     tree.build(20)
@@ -287,7 +288,6 @@ def generate_pair(
         pair_MN = sample_MN_pair(X, n_MN)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
-        print("Triggered")
         pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE)
         pair_FP = sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
     return pair_neighbors, pair_MN, pair_FP
@@ -305,7 +305,8 @@ def generate_pair_no_neighbors(
         pair_MN = sample_MN_pair(X, n_MN)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
-        print("Triggered")
+        if verbose:
+            print("Triggered")
         pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE)
         pair_FP = sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
     return pair_neighbors, pair_MN, pair_FP
@@ -493,7 +494,7 @@ class PaCMAP(BaseEstimator):
             warnings.warn("apply_pca = True for Hamming distance.")
         if not self.apply_pca:
             print(
-                "running ANNOY on high-dimensional data. nearest-neighbor search may be slow!")
+                "Warning: running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
 
     def fit(self, X, init=None, save_pairs=True):
         X = X.astype(np.float32)
