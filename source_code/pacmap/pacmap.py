@@ -474,12 +474,12 @@ class PaCMAP(BaseEstimator):
         global _RANDOM_STATE
         if random_state is not None:
             assert(isinstance(random_state, int))
-            self.seed = random_state
+            self.random_state = random_state
             _RANDOM_STATE = random_state # Set random state for numba functions
             if verbose:
                 print(f'Warning: random state is set to {_RANDOM_STATE}')
         else:
-            self.seed = 0
+            self.random_state = 0
             _RANDOM_STATE = None # Reset random state
             if verbose:
                 print(f'Warning: random state is removed')
@@ -548,7 +548,7 @@ class PaCMAP(BaseEstimator):
                 self.apply_pca,
                 self.verbose,
                 self.intermediate,
-                self.seed
+                self.random_state
             )
         else:
             self.embedding_, self.intermediate_states, _, _, _ = pacmap(
@@ -567,7 +567,7 @@ class PaCMAP(BaseEstimator):
                 self.apply_pca,
                 self.verbose,
                 self.intermediate,
-                self.seed
+                self.random_state
             )
 
         return self
@@ -603,7 +603,7 @@ class PaCMAP(BaseEstimator):
             if X.shape[1] > 100 and self.apply_pca:
                 X -= np.mean(X, axis=0)
                 X = TruncatedSVD(n_components=100,
-                                 random_state=self.seed).fit_transform(X)
+                                 random_state=self.random_state).fit_transform(X)
                 if self.verbose:
                     print("applied PCA")
             else:
