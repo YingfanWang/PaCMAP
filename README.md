@@ -1,10 +1,10 @@
 # PaCMAP
 
-**Our work has been accepted by the Jounral of Machine Learning Research(JMLR)! We will update the citation link whenever the final version is ready.**
+**Our work has been published at the Jounral of Machine Learning Research(JMLR)!**
 
 PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reduction method that can be used for visualization, preserving both local and global structure of the data in original space. PaCMAP optimizes the low dimensional embedding using three kinds of pairs of points: neighbor pairs (pair_neighbors), mid-near pair (pair_MN), and further pairs (pair_FP).
 
-Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [the preprint](https://arxiv.org/abs/2012.04456).
+Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [our paper](https://jmlr.org/papers/v22/20-1061.html). The preprint version can be found [here](https://arxiv.org/abs/2012.04456)
 
 # Release Notes
 - 0.5.0
@@ -179,7 +179,7 @@ We have provided the code we use to run experiment for better reproducibility. T
 After downloading the code, you may need to specify some of the paths in the script to make them fully functional.
 
 # Citation
-If you use PaCMAP in your publication, or you used the implementation in this repository, please cite our preprint here:
+If you use PaCMAP in your publication, or you used the implementation in this repository, please cite our paper using the following bibtex:
 
 ```
 @article{JMLR:v22:20-1061,
