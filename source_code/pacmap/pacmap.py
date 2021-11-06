@@ -141,7 +141,8 @@ def sample_MN_pair_deterministic(X, n_MN, random_state):
     pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
         for jj in range(n_MN):
-            np.random.seed(random_state)
+            # Shifting the seed to prevent sampling the same pairs
+            np.random.seed(random_state + i * n_MN + jj) 
             sampled = np.random.randint(0, n, 6)
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
@@ -174,7 +175,7 @@ def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_st
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
         for k in numba.prange(n_FP):
-            np.random.seed(random_state)
+            np.random.seed(random_state+i*n_FP+k)
             FP_index = sample_FP(
                 n_FP, n, pair_neighbors[i*n_neighbors: i*n_neighbors + n_neighbors][1])
             pair_FP[i*n_FP + k][0] = i
