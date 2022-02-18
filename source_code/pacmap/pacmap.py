@@ -115,6 +115,18 @@ def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
             pair_neighbors[i*n_neighbors + j][1] = nbrs[i][scaled_sort[j]]
     return pair_neighbors
 
+@numba.njit("i4[:,:](f4[:,:],f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True)
+def sample_neighbors_pairXp(X, Xp, scaled_dist, nbrs, n_neighbors):
+    n = Xp.shape[0]
+    pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
+
+    for i in numba.prange(n):
+        scaled_sort = np.argsort(scaled_dist[i])
+        for j in numba.prange(n_neighbors):
+            pair_neighbors[i*n_neighbors + j][0] = X.shape[0]+i
+            pair_neighbors[i*n_neighbors + j][1] = nbrs[i][scaled_sort[j]]
+    return pair_neighbors
+
 
 @numba.njit("i4[:,:](f4[:,:],i4)", nogil=True)
 def sample_MN_pair(X, n_MN):
@@ -206,12 +218,12 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
 
 
 
-@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4)", parallel=True, nogil=True)
-def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
+@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True)
+def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, sizeXp):
     n, dim = Y.shape
     grad = np.zeros((n+1, dim), dtype=np.float32)
     y_ij = np.empty(dim, dtype=np.float32)
-    loss = np.zeros(3, dtype=np.float32)
+    loss = np.zeros(4, dtype=np.float32)
     for t in range(pair_neighbors.shape[0]):
         i = pair_neighbors[t, 0]
         j = pair_neighbors[t, 1]
@@ -248,8 +260,57 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             grad[i, d] -= w1 * y_ij[d]
             grad[j, d] += w1 * y_ij[d]
+    if not (pair_Xp is None):
+        
+        for tx in range(pair_Xp.shape[0]):
+            i = pair_Xp[tx, 0]
+            j = pair_Xp[tx, 1]
+            d_ij = 1.0
+            for d in range(dim):
+                y_ij[d] = Y[i, d] - Y[j, d]
+                d_ij += y_ij[d] ** 2
+            # Do not impact the loss with this grads
+#            loss[3] += 1. * 1./(1. + d_ij)
+            w1 = 1. * 2./(1. + d_ij) ** 2
+            for d in range(dim):
+                grad[i, d] += w1 * y_ij[d] # just compute the gradient for our point
+#                grad[j, d] += w1 * y_ij[d] #
+        
     grad[-1, 0] = loss.sum()
     return grad
+
+
+def generate_nb_pair(X, Xp,
+        n_neighbors,
+        distance='euclidean',
+        verbose=True
+):
+    npr, dimp = Xp.shape
+    n, dim = X.shape
+    n_neighbors_extra = min(n_neighbors + 50, n)
+    tree = AnnoyIndex(dim, metric=distance)
+    if _RANDOM_STATE is not None:
+        tree.set_seed(_RANDOM_STATE)
+    for i in range(n):
+        tree.add_item(i, X[i, :])
+    tree.build(20)
+
+    nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
+    knn_distances = np.empty((npr, n_neighbors_extra), dtype=np.float32)
+
+    for i in range(npr):
+        nbrs[i, :], knn_distances[i, :] = tree.get_nns_by_vector(Xp[i, :], n_neighbors_extra, include_distances=True)         
+
+    if verbose:
+        print("Found nearest neighbor")
+    sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
+    if verbose:
+        print("Calculated sigma")
+    scaled_dist = scale_dist(knn_distances, sig, nbrs)
+    if verbose:
+        print("Found scaled dist")
+    pair_neighbors = sample_neighbors_pairXp(X, Xp, scaled_dist, nbrs, n_neighbors)
+    return pair_neighbors
 
 
 def generate_pair(
@@ -353,7 +414,7 @@ def pacmap(
                 tsvd =TruncatedSVD(n_components=100,
                                  random_state=seed)
                 X = tsvd.fit_transform(X)
-                if (not Xp is None):
+                if not (Xp is None):
                     Xp = tsvd.transform(Xp)
                 pca_solution = True
                 if verbose:
@@ -431,6 +492,14 @@ def pacmap(
         itr_ind = 1
         intermediate_states[0, :, :] = Y
 
+    pair_Xp=None
+    sizeXp=0
+    if not (Xp is None):
+        pair_Xp = generate_nb_pair(X, Xp, n_neighbors, distance, verbose)
+        sizeXp=Xp.shape[0]
+
+    print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape)
+
     for itr in range(num_iters):
         if itr < 100:
             w_MN = (1 - itr/100) * w_MN_init + itr/100 * 3.0
@@ -446,7 +515,7 @@ def pacmap(
             w_FP = 1.
 
         grad = pacmap_grad(Y, pair_neighbors, pair_MN,
-                           pair_FP, w_neighbors, w_MN, w_FP)
+                           pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, sizeXp)
         C = grad[-1, 0]
         if verbose and itr == 0:
             print(f"Initial Loss: {C}")
@@ -525,7 +594,7 @@ class PaCMAP(BaseEstimator):
             print(
                 "Warning: running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
 
-    def fit(self, X, Xp, init=None, save_pairs=True):
+    def fit(self, X, Xp=None, init=None, save_pairs=True):
         X = X.astype(np.float32)
         n, dim = X.shape
         if n <= 0:
