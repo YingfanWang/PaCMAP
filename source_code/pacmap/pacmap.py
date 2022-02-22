@@ -356,7 +356,7 @@ def pacmap(
 
     if intermediate:
         itr_dic = [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
-        intermediate_states = np.empty((13, n, 2), dtype=np.float32)
+        intermediate_states = np.empty((13, n, n_dims), dtype=np.float32)
     else:
         intermediate_states = None
 
