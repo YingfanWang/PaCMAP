@@ -44,15 +44,6 @@ You can use pip to install pacmap from PyPI. It will automatically install the d
 pip install pacmap
 ```
 
-
-Alternatively, you can use the following command to install these dependencies:
-```
-pip install numpy
-pip install scikit-learn
-pip install annoy
-pip install numba
-```
-
 # Usage
 The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [this paragraph](#installation), and then import the module. The following code clip includes a use case about how to use PaCMAP on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
 
