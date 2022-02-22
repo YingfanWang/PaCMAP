@@ -74,13 +74,13 @@ def hamming_dist(x1, x2):
 
 @numba.njit()
 def calculate_dist(x1, x2, distance_index):
-    if distance_index == 0:
+    if distance_index == 0: # euclidean
         return euclid_dist(x1, x2)
-    elif distance_index == 1:
+    elif distance_index == 1: # manhattan
         return manhattan_dist(x1, x2)
-    elif distance_index == 2:
+    elif distance_index == 2: # angular
         return angular_dist(x1, x2)
-    elif distance_index == 3:
+    elif distance_index == 3: # hamming
         return hamming_dist(x1, x2)
 
 
@@ -128,8 +128,8 @@ def sample_neighbors_pairXp(X, Xp, scaled_dist, nbrs, n_neighbors):
     return pair_neighbors
 
 
-@numba.njit("i4[:,:](f4[:,:],i4)", nogil=True)
-def sample_MN_pair(X, n_MN):
+@numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True)
+def sample_MN_pair(X, n_MN, option=0):
     n = X.shape[0]
     pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -137,7 +137,7 @@ def sample_MN_pair(X, n_MN):
             sampled = np.random.randint(0, n, 6)
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
-                dist_list[t] = euclid_dist(X[i], X[sampled[t]])
+                dist_list[t] = calculate_dist(X[i], X[sampled[t]], distance_index=option)
             min_dic = np.argmin(dist_list)
             dist_list = np.delete(dist_list, [min_dic])
             sampled = np.delete(sampled, [min_dic])
@@ -147,8 +147,8 @@ def sample_MN_pair(X, n_MN):
     return pair_MN
 
 
-@numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True)
-def sample_MN_pair_deterministic(X, n_MN, random_state):
+@numba.njit("i4[:,:](f4[:,:],i4,i4,i4)", nogil=True)
+def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
     n = X.shape[0]
     pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -158,7 +158,7 @@ def sample_MN_pair_deterministic(X, n_MN, random_state):
             sampled = np.random.randint(0, n, 6)
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
-                dist_list[t] = euclid_dist(X[i], X[sampled[t]])
+                dist_list[t] = calculate_dist(X[i], X[sampled[t]], distance_index=option)
             min_dic = np.argmin(dist_list)
             dist_list = np.delete(dist_list, [min_dic])
             sampled = np.delete(sampled, [min_dic])
@@ -312,6 +312,21 @@ def generate_nb_pair(X, Xp,
     pair_neighbors = sample_neighbors_pairXp(X, Xp, scaled_dist, nbrs, n_neighbors)
     return pair_neighbors
 
+  
+def distance_to_option(distance='euclidean'):
+    if distance == 'euclidean':
+        option = 0
+    elif distance == 'manhattan':
+        option = 1
+    elif distance == 'angular':
+        option = 2
+    elif distance == 'hamming':
+        option = 3
+    else:
+        raise NotImplementedError('Distance other than euclidean, manhattan,' + \
+                    'angular or hamming is not supported')
+    return option
+
 
 def generate_pair(
         X,
@@ -329,6 +344,8 @@ def generate_pair(
     for i in range(n):
         tree.add_item(i, X[i, :])
     tree.build(20)
+
+    option = distance_to_option(distance=distance)
 
     nbrs = np.zeros((n, n_neighbors_extra), dtype=np.int32)
     knn_distances = np.empty((n, n_neighbors_extra), dtype=np.float32)
@@ -348,12 +365,13 @@ def generate_pair(
         print("Found scaled dist")
     pair_neighbors = sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors)
     if _RANDOM_STATE is None:
-        pair_MN = sample_MN_pair(X, n_MN)
+        pair_MN = sample_MN_pair(X, n_MN, option)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
-        pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE)
+        pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
         pair_FP = sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
     return pair_neighbors, pair_MN, pair_FP
+
 
 def generate_pair_no_neighbors(
         X,
@@ -364,13 +382,15 @@ def generate_pair_no_neighbors(
         distance='euclidean',
         verbose=True
 ):
+    option = distance_to_option(distance=distance)
+
     if _RANDOM_STATE is None:
-        pair_MN = sample_MN_pair(X, n_MN)
+        pair_MN = sample_MN_pair(X, n_MN, option)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
         if verbose:
             print("Triggered")
-        pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE)
+        pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
         pair_FP = sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
     return pair_neighbors, pair_MN, pair_FP
 
