@@ -105,6 +105,10 @@ Other parameters include:
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
 - `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_dims`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
 
+# Methods
+Similar to the scikit-learn API, the PaCMAP instance can generate embedding for a dataset via the `fit_transform` method. We currently support numpy.ndarray format as our input. Specifically, to convert pandas DataFrame to ndarray format, please refer to the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html). For a more detailed walkthrough, please see the [demo.py](demo.py) file.
+
+
 # How to use user-specified nearest neighbor
 In version 0.4, we have provided a new option to allow users to use their own nearest neighbors when mapping large-scale
 datasets. The following code clip includes a use case about how to use PaCMAP with the user-specified nearest neighbors:
