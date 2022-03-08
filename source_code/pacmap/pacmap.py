@@ -529,7 +529,7 @@ def pacmap(
         pair_Xp = generate_nb_pair(X, Xp, n_neighbors, distance, verbose)
         sizeXp = Xp.shape[0]
 
-    print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape)
+        print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape)
 
     for itr in range(num_iters):
         if itr < 100:
