@@ -221,7 +221,7 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
 
 
 @numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True)
-def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, sizeXp):
+def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, size_Xp):
     n, dim = Y.shape
     grad = np.zeros((n+1, dim), dtype=np.float32)
     y_ij = np.empty(dim, dtype=np.float32)
@@ -524,12 +524,15 @@ def pacmap(
         intermediate_states[0, :, :] = Y
 
     pair_Xp = None
-    sizeXp = 0
+    size_Xp = 0
     if not (Xp is None):
         pair_Xp = generate_nb_pair(X, Xp, n_neighbors, distance, verbose)
-        sizeXp = Xp.shape[0]
+        size_Xp = Xp.shape[0]
 
-    print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape)
+    if verbose and pair_Xp is not None:
+        print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape)
+    elif verbose:
+        print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape)
 
     for itr in range(num_iters):
         if itr < 100:
@@ -546,7 +549,7 @@ def pacmap(
             w_FP = 1.
 
         grad = pacmap_grad(Y, pair_neighbors, pair_MN,
-                           pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, sizeXp)
+                           pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, size_Xp)
         C = grad[-1, 0]
         if verbose and itr == 0:
             print(f"Initial Loss: {C}")
