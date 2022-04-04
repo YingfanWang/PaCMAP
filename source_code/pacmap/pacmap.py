@@ -290,7 +290,7 @@ def generate_nb_pair(X, Xp,
                      ):
     npr, dimp = Xp.shape
     n, dim = X.shape
-    n_neighbors_extra = min(n_neighbors + 50, n)
+    n_neighbors_extra = min(n_neighbors + 50, n - 1)
     tree = AnnoyIndex(dim, metric=distance)
     if _RANDOM_STATE is not None:
         tree.set_seed(_RANDOM_STATE)
