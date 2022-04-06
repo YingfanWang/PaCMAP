@@ -117,20 +117,22 @@ def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
 
 
 @numba.njit("i4[:,:](f4[:,:],f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True)
-def sample_neighbors_pairXp(X, Xp, scaled_dist, nbrs, n_neighbors):
-    n = Xp.shape[0]
+def sample_neighbors_pair_basis(basis, X, scaled_dist, nbrs, n_neighbors):
+    '''Sample Nearest Neighbor pairs for additional data.'''
+    n = X.shape[0]
     pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
 
     for i in numba.prange(n):
         scaled_sort = np.argsort(scaled_dist[i])
         for j in numba.prange(n_neighbors):
-            pair_neighbors[i*n_neighbors + j][0] = X.shape[0]+i
+            pair_neighbors[i*n_neighbors + j][0] = basis.shape[0]+i
             pair_neighbors[i*n_neighbors + j][1] = nbrs[i][scaled_sort[j]]
     return pair_neighbors
 
 
 @numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True)
 def sample_MN_pair(X, n_MN, option=0):
+    '''Sample Mid Near pairs.'''
     n = X.shape[0]
     pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -151,6 +153,7 @@ def sample_MN_pair(X, n_MN, option=0):
 
 @numba.njit("i4[:,:](f4[:,:],i4,i4,i4)", nogil=True)
 def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
+    '''Sample Mid Near pairs using the given random state.'''
     n = X.shape[0]
     pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -173,6 +176,7 @@ def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
 
 @numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4)", parallel=True, nogil=True)
 def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
+    '''Sample Further pairs.'''
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -186,6 +190,7 @@ def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
 
 @numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4,i4)", parallel=True, nogil=True)
 def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_state):
+    '''Sample Further pairs using the given random state.'''
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -200,6 +205,7 @@ def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_st
 
 @numba.njit("f4[:,:](f4[:,:],f4[:],i4[:,:])", parallel=True, nogil=True)
 def scale_dist(knn_distance, sig, nbrs):
+    '''Scale the distance'''
     n, num_neighbors = knn_distance.shape
     scaled_dist = np.zeros((n, num_neighbors), dtype=np.float32)
     for i in numba.prange(n):
@@ -211,6 +217,7 @@ def scale_dist(knn_distance, sig, nbrs):
 
 @numba.njit("void(f4[:,:],f4[:,:],f4[:,:],f4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True)
 def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
+    '''Update the embedding with the gradient'''
     n, dim = Y.shape
     lr_t = lr * math.sqrt(1.0 - beta2**(itr+1)) / (1.0 - beta1**(itr+1))
     for i in numba.prange(n):
@@ -220,8 +227,9 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
             Y[i][d] -= lr_t * m[i][d]/(math.sqrt(v[i][d]) + 1e-7)
 
 
-@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True)
-def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, size_Xp):
+@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4)", parallel=True, nogil=True)
+def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_XP, w_neighbors, w_MN, w_FP):
+    '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
     grad = np.zeros((n+1, dim), dtype=np.float32)
     y_ij = np.empty(dim, dtype=np.float32)
@@ -262,11 +270,13 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_Xp, w_neighbors, w_MN,
         for d in range(dim):
             grad[i, d] -= w1 * y_ij[d]
             grad[j, d] += w1 * y_ij[d]
-    if not (pair_Xp is None):
 
-        for tx in range(pair_Xp.shape[0]):
-            i = pair_Xp[tx, 0]
-            j = pair_Xp[tx, 1]
+    # For case where extra samples are added to the dataset
+    # FIXME -- this should be handled as a separate case
+    if pair_XP is not None:
+        for tx in range(pair_XP.shape[0]):
+            i = pair_XP[tx, 0]
+            j = pair_XP[tx, 1]
             d_ij = 1.0
             for d in range(dim):
                 y_ij[d] = Y[i, d] - Y[j, d]
@@ -283,42 +293,10 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, pair_Xp, w_neighbors, w_MN,
     return grad
 
 
-def generate_nb_pair(X, Xp,
-                     n_neighbors,
-                     distance='euclidean',
-                     verbose=True
-                     ):
-    npr, dimp = Xp.shape
-    n, dim = X.shape
-    n_neighbors_extra = min(n_neighbors + 50, n - 1)
-    tree = AnnoyIndex(dim, metric=distance)
-    if _RANDOM_STATE is not None:
-        tree.set_seed(_RANDOM_STATE)
-    for i in range(n):
-        tree.add_item(i, X[i, :])
-    tree.build(20)
-
-    nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
-    knn_distances = np.empty((npr, n_neighbors_extra), dtype=np.float32)
-
-    for i in range(npr):
-        nbrs[i, :], knn_distances[i, :] = tree.get_nns_by_vector(
-            Xp[i, :], n_neighbors_extra, include_distances=True)
-
-    if verbose:
-        print("Found nearest neighbor")
-    sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
-    if verbose:
-        print("Calculated sigma")
-    scaled_dist = scale_dist(knn_distances, sig, nbrs)
-    if verbose:
-        print("Found scaled dist")
-    pair_neighbors = sample_neighbors_pairXp(
-        X, Xp, scaled_dist, nbrs, n_neighbors)
-    return pair_neighbors
-
-
 def distance_to_option(distance='euclidean'):
+    '''A helper function that translates distance metric to int options.
+    Such a translation is useful for numba acceleration.
+    '''
     if distance == 'euclidean':
         option = 0
     elif distance == 'manhattan':
@@ -328,9 +306,49 @@ def distance_to_option(distance='euclidean'):
     elif distance == 'hamming':
         option = 3
     else:
-        raise NotImplementedError('Distance other than euclidean, manhattan,' +
+        raise NotImplementedError('Distance metric other than euclidean, manhattan,' +
                                   'angular or hamming is not supported')
     return option
+
+
+def print_verbose(msg, verbose, **kwargs):
+    if verbose:
+        print(msg, **kwargs)
+
+
+def generate_extra_pair_basis(basis, X,
+                     n_neighbors,
+                     distance='euclidean',
+                     verbose=True
+                     ):
+    '''Generate pairs that connects the extra set of data to the fitted basis.
+    '''
+    npr, dimp = X.shape
+    n, dim = basis.shape
+    assert dimp == dim, "The dimension of the original dataset is different from the new one's."
+    n_neighbors_extra = min(n_neighbors + 50, n - 1)
+    tree = AnnoyIndex(dim, metric=distance) # can we save this tree in cache?
+    if _RANDOM_STATE is not None:
+        tree.set_seed(_RANDOM_STATE)
+    for i in range(n):
+        tree.add_item(i, basis[i, :])
+    tree.build(20)
+
+    nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
+    knn_distances = np.empty((npr, n_neighbors_extra), dtype=np.float32)
+
+    for i in range(npr):
+        nbrs[i, :], knn_distances[i, :] = tree.get_nns_by_vector(
+            X[i, :], n_neighbors_extra, include_distances=True)
+
+    print_verbose("Found nearest neighbor", verbose)
+    sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
+    print_verbose("Calculated sigma", verbose)
+    scaled_dist = scale_dist(knn_distances, sig, nbrs)
+    print_verbose("Found scaled dist", verbose)
+    pair_neighbors = sample_neighbors_pair_basis(
+        basis, X, scaled_dist, nbrs, n_neighbors)
+    return pair_neighbors
 
 
 def generate_pair(
@@ -341,6 +359,8 @@ def generate_pair(
         distance='euclidean',
         verbose=True
 ):
+    '''Generate pairs for the dataset.
+    '''
     n, dim = X.shape
     n_neighbors_extra = min(n_neighbors + 50, n)
     tree = AnnoyIndex(dim, metric=distance)
@@ -360,14 +380,11 @@ def generate_pair(
         nbrs[i, :] = nbrs_[1:]
         for j in range(n_neighbors_extra):
             knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
-    if verbose:
-        print("Found nearest neighbor")
+    print_verbose("Found nearest neighbor", verbose)
     sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
-    if verbose:
-        print("Calculated sigma")
+    print_verbose("Calculated sigma", verbose)
     scaled_dist = scale_dist(knn_distances, sig, nbrs)
-    if verbose:
-        print("Found scaled dist")
+    print_verbose("Found scaled dist", verbose)
     pair_neighbors = sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors)
     if _RANDOM_STATE is None:
         pair_MN = sample_MN_pair(X, n_MN, option)
@@ -388,14 +405,15 @@ def generate_pair_no_neighbors(
         distance='euclidean',
         verbose=True
 ):
+    '''Generate mid-near pairs and further pairs for a given dataset.
+    This function is useful when the nearest neighbors comes from a given set.
+    '''
     option = distance_to_option(distance=distance)
 
     if _RANDOM_STATE is None:
         pair_MN = sample_MN_pair(X, n_MN, option)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
-        if verbose:
-            print("Triggered")
         pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
         pair_FP = sample_FP_pair_deterministic(
             X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
@@ -403,6 +421,148 @@ def generate_pair_no_neighbors(
 
 
 def pacmap(
+        X,
+        n_dims,
+        n_neighbors,
+        n_MN,
+        n_FP,
+        pair_neighbors,
+        pair_MN,
+        pair_FP,
+        distance,
+        lr,
+        num_iters,
+        Yinit,
+        apply_pca,
+        verbose,
+        intermediate,
+        inter_snapshots,
+        seed=0,
+):
+    start_time = time.time()
+    n, high_dim = X.shape
+
+    if intermediate:
+        intermediate_states = np.empty((len(inter_snapshots), n, n_dims), dtype=np.float32)
+    else:
+        intermediate_states = None
+
+    pca_solution = False
+    print_verbose("Finding pairs", verbose)
+
+    if pair_neighbors is None:
+        X, pca_solution = preprocess_X(X, distance, apply_pca, verbose, seed, high_dim)
+
+        pair_neighbors, pair_MN, pair_FP = generate_pair(
+            X, n_neighbors, n_MN, n_FP, distance, verbose
+        )
+        print_verbose("Pairs sampled successfully.", verbose)
+    elif pair_MN is None and pair_FP is None:
+        print_verbose("Using user provided nearest neighbor pairs.", verbose)
+        assert pair_neighbors.shape == (n * n_neighbors, 2), "The shape of the user provided nearest neighbor pairs is incorrect."
+        pair_neighbors, pair_MN, pair_FP = generate_pair_no_neighbors(
+            X, n_neighbors, n_MN, n_FP, pair_neighbors, distance, verbose
+        )
+        print_verbose("Pairs sampled successfully.", verbose)
+    else:
+        print_verbose("Using stored pairs.", verbose)
+
+    if Yinit is None or Yinit == "pca":
+        if pca_solution:
+            Y = 0.01 * X[:, :n_dims]
+        else:
+            Y = 0.01 * \
+                    PCA(n_components=n_dims, random_state=_RANDOM_STATE).fit_transform(
+                        X).astype(np.float32)
+
+    elif Yinit == "random":
+        if _RANDOM_STATE is not None:
+            np.random.seed(_RANDOM_STATE)
+        Y = np.random.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
+    else:  # user_supplied matrix
+        Yinit = Yinit.astype(np.float32)
+        scaler = preprocessing.StandardScaler().fit(Yinit)
+        Y = scaler.transform(Yinit) * 0.0001
+
+    w_MN_init = 1000.
+    beta1 = 0.9
+    beta2 = 0.999
+    m = np.zeros_like(Y, dtype=np.float32)
+    v = np.zeros_like(Y, dtype=np.float32)
+
+    if intermediate:
+        itr_ind = 1
+        intermediate_states[0, :, :] = Y
+
+    pair_Xp = None
+    size_Xp = 0
+
+    # FIXME
+    if pair_Xp is not None:
+        print_verbose(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape, verbose)
+    else:
+        print_verbose(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, verbose)
+
+    for itr in range(num_iters):
+        w_MN, w_neighbors, w_FP = find_weight(w_MN_init, itr)
+
+        grad = pacmap_grad(Y, pair_neighbors, pair_MN,
+                           pair_FP, pair_Xp, w_neighbors, w_MN, w_FP, size_Xp)
+        C = grad[-1, 0]
+        if verbose and itr == 0:
+            print(f"Initial Loss: {C}")
+        update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
+
+        if intermediate:
+            if (itr+1) == inter_snapshots[itr_ind]:
+                intermediate_states[itr_ind, :, :] = Y
+                itr_ind += 1
+                if itr_ind > 12:
+                    itr_ind -= 1
+        if (itr + 1) % 10 == 0:
+            print_verbose("Iteration: %4d, Loss: %f" % (itr + 1, C), verbose)
+
+    elapsed = datetime.timedelta(seconds=time.time() - start_time)
+    print_verbose(f"Elapsed time: {elapsed:.2d}s", verbose)
+
+    return Y, intermediate_states, pair_neighbors, pair_MN, pair_FP
+
+def find_weight(w_MN_init, itr):
+    '''Find the corresponding weight given the index of an iteration'''
+    if itr < 100:
+        w_MN = (1 - itr/100) * w_MN_init + itr/100 * 3.0
+        w_neighbors = 2.0
+        w_FP = 1.0
+    elif itr < 200:
+        w_MN = 3.0
+        w_neighbors = 3
+        w_FP = 1
+    else:
+        w_MN = 0.0
+        w_neighbors = 1.
+        w_FP = 1.
+    return w_MN, w_neighbors, w_FP
+
+
+def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim):
+    if distance != "hamming":
+        if high_dim > 100 and apply_pca:
+            X -= np.mean(X, axis=0)
+            tsvd = TruncatedSVD(n_components=100, random_state=seed)
+            X = tsvd.fit_transform(X)
+            pca_solution = True
+            print_verbose("Applied PCA, the dimensionality becomes 100", verbose)
+        else:
+            xmin, xmax = (np.min(X), np.max(X))
+            X -= xmin
+            X /= xmax
+            xmean = np.mean(X, axis=0)
+            X -= xmean
+            print_verbose("X is normalized", verbose)
+    return X, pca_solution
+
+
+def pacmap_fit(
         X,
         n_dims,
         n_neighbors,
@@ -433,8 +593,7 @@ def pacmap(
     pca_solution = False
 
     if pair_neighbors is None:
-        if verbose:
-            print("Finding pairs")
+        print_verbose("Finding pairs", verbose)
         if distance != "hamming":
             if high_dim > 100 and apply_pca:
                 X -= np.mean(X, axis=0)
@@ -444,8 +603,7 @@ def pacmap(
                 if not (Xp is None):
                     Xp = tsvd.transform(Xp)
                 pca_solution = True
-                if verbose:
-                    print("Applied PCA, the dimensionality becomes 100")
+                print_verbose("Applied PCA, the dimensionality becomes 100", verbose)
             else:
                 xmin, xmax = (np.min(X), np.max(X))
                 X -= xmin
@@ -457,16 +615,13 @@ def pacmap(
                     Xp /= xmax
                     Xp -= xmean
 
-                if verbose:
-                    print("X is normalized")
+                print_verbose("X is normalized")
         pair_neighbors, pair_MN, pair_FP = generate_pair(
             X, n_neighbors, n_MN, n_FP, distance, verbose
         )
-        if verbose:
-            print("Pairs sampled successfully.")
+        print_verbose("Pairs sampled successfully.", verbose)
     elif pair_MN is None and pair_FP is None:
-        if verbose:
-            print("Using user provided nearest neighbor pairs.")
+        print_verbose("Using user provided nearest neighbor pairs.", verbose)
         try:
             assert(pair_neighbors.shape == (n * n_neighbors, 2))
         except AssertionError:
@@ -475,11 +630,9 @@ def pacmap(
         pair_neighbors, pair_MN, pair_FP = generate_pair_no_neighbors(
             X, n_neighbors, n_MN, n_FP, pair_neighbors, distance, verbose
         )
-        if verbose:
-            print("Pairs sampled successfully.")
+        print_verbose("Pairs sampled successfully.", verbose)
     else:
-        if verbose:
-            print("Using stored pairs.")
+        print_verbose("Using stored pairs.", verbose)
 
     if Yinit is None or Yinit == "pca":
         if pca_solution:
@@ -526,9 +679,10 @@ def pacmap(
     pair_Xp = None
     size_Xp = 0
     if not (Xp is None):
-        pair_Xp = generate_nb_pair(X, Xp, n_neighbors, distance, verbose)
+        pair_Xp = generate_extra_pair_basis(X, Xp, n_neighbors, distance, verbose)
         size_Xp = Xp.shape[0]
 
+    # FIXME
     if verbose and pair_Xp is not None:
         print(pair_neighbors.shape, pair_MN.shape, pair_FP.shape, pair_Xp.shape)
     elif verbose:
@@ -561,13 +715,11 @@ def pacmap(
                 itr_ind += 1
                 if itr_ind > 12:
                     itr_ind -= 1
-        if verbose:
-            if (itr + 1) % 10 == 0:
-                print("Iteration: %4d, Loss: %f" % (itr + 1, C))
+        if (itr + 1) % 10 == 0:
+            print_verbose("Iteration: %4d, Loss: %f" % (itr + 1, C), verbose)
 
-    if verbose:
-        elapsed = str(datetime.timedelta(seconds=time.time() - start_time))
-        print("Elapsed time: %s" % (elapsed))
+    elapsed = str(datetime.timedelta(seconds=time.time() - start_time))
+    print_verbose("Elapsed time: %s" % (elapsed), verbose)
     if Xp is None:
         return Y, intermediate_states, pair_neighbors, pair_MN, pair_FP
     else:
@@ -575,6 +727,66 @@ def pacmap(
 
 
 class PaCMAP(BaseEstimator):
+    '''Pairwise Controlled Manifold Approximation.
+    
+    Maps high-dimensional dataset to a low-dimensional embedding.
+    This class inherits the sklearn BaseEstimator, and we tried our best to
+    follow the sklearn api. For details of this method, please refer to our publication:
+    https://www.jmlr.org/papers/volume22/20-1061/20-1061.pdf
+
+    Parameters
+    ---------
+    n_dims: int, default=2
+        Dimensions of the embedded space. We recommend to use 2 or 3.
+    
+    n_neighbors: int, default=10
+        Number of neighbors considered for nearest neighbor pairs for local structure preservation.
+
+    MN_ratio: float, default=0.5
+        Ratio of mid near pairs to nearest neighbor pairs (e.g. n_neighbors=10, MN_ratio=0.5 --> 5 Mid near pairs)
+        Mid near pairs are used for global structure preservation.
+    
+    FP_ratio: float, default=2.0
+        Ratio of further pairs to nearest neighbor pairs (e.g. n_neighbors=10, FP_ratio=2 --> 20 Further pairs)
+        Further pairs are used for both local and global structure preservation.
+
+    pair_neighbors: numpy.ndarray, optional
+        Nearest neighbor pairs constructed from a previous run or from outside functions.
+
+    pair_MN: numpy.ndarray, optional
+        Mid near pairs constructed from a previous run or from outside functions.
+
+    pair_FP: numpy.ndarray, optional
+        Further pairs constructed from a previous run or from outside functions.
+
+    distance: string, default="euclidean"
+        Distance metric used for high-dimensional space. Allowed metrics include euclidean, manhattan, angular, hamming.
+    
+    lr: float, default=1.0
+        Learning rate of the Adam optimizer for embedding.
+    
+    num_iters: int, default=450
+        Number of iterations for the optimization of embedding. 
+        Due to the stage-based nature, we suggest this parameter to be greater than 250 for all three stages to be utilized.
+
+    verbose: bool, default=False
+        Whether to print additional information during initialization and fitting.
+    
+    apply_pca: bool, default=True
+        Whether to apply PCA on the data before pair construction.
+    
+    intermediate: bool, default=False
+        Whether to return intermediate state of the embedding during optimization.
+        If True, returns a series of embedding during different stages of optimization.
+    
+    intermediate_snapshots: list[int], optional
+        The index of step where an intermediate snapshot of the embedding is taken.
+        If intermediate sets to True, the default value will be [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
+    
+    random_state: int, optional
+        Random state for the pacmap instance.
+        Setting random state is useful for repeatability.
+    '''
     def __init__(self,
                  n_dims=2,
                  n_neighbors=10,
@@ -589,6 +801,7 @@ class PaCMAP(BaseEstimator):
                  verbose=False,
                  apply_pca=True,
                  intermediate=False,
+                 intermediate_snapshots=None,
                  random_state=None
                  ):
         self.n_dims = n_dims
@@ -604,29 +817,35 @@ class PaCMAP(BaseEstimator):
         self.apply_pca = apply_pca
         self.verbose = verbose
         self.intermediate = intermediate
+        if self.intermediate and intermediate_snapshots is None:
+            self.intermediate_snapshots = [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
+
         global _RANDOM_STATE
         if random_state is not None:
             assert(isinstance(random_state, int))
             self.random_state = random_state
             _RANDOM_STATE = random_state  # Set random state for numba functions
-            if verbose:
-                print(f'Warning: random state is set to {_RANDOM_STATE}')
+            warnings.warn(f'Warning: random state is set to {_RANDOM_STATE}')
         else:
+            try: 
+                if _RANDOM_STATE is not None:
+                    warnings.warn(f'Warning: random state is removed')
+            except NameError:
+                pass 
             self.random_state = 0
             _RANDOM_STATE = None  # Reset random state
-            if verbose:
-                print(f'Warning: random state is removed')
 
         if self.n_dims < 2:
             raise ValueError(
-                "The number of projection dimensions must be at least 2")
+                "The number of projection dimensions must be at least 2.")
         if self.lr <= 0:
-            raise ValueError("The learning rate must be larger than 0")
+            raise ValueError("The learning rate must be larger than 0.")
         if self.distance == "hamming" and apply_pca:
             warnings.warn("apply_pca = True for Hamming distance.")
         if not self.apply_pca:
-            print(
-                "Warning: running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
+            warnings.warn(
+                "Running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
+
 
     def fit(self, X, Xp=None, init=None, save_pairs=True):
         X = X.astype(np.float32)
@@ -704,12 +923,16 @@ class PaCMAP(BaseEstimator):
 
         return self
 
+
     def fit_transform(self, X, Xp=None, init=None, save_pairs=True):
         self.fit(X, Xp, init, save_pairs)
         if self.intermediate:
             return self.intermediate_states
         else:
             return self.embedding_
+
+    def transform(self, X, init=None, save_pairs=True):
+        pass
 
     def sample_pairs(self, X):
         if self.verbose:
@@ -737,7 +960,7 @@ class PaCMAP(BaseEstimator):
                 X = TruncatedSVD(n_components=100,
                                  random_state=self.random_state).fit_transform(X)
                 if self.verbose:
-                    print("applied PCA")
+                    print("PCA applied")
             else:
                 X -= np.min(X)
                 X /= np.max(X)
