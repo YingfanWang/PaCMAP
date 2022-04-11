@@ -7,6 +7,9 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [our paper](https://jmlr.org/papers/v22/20-1061.html).
 
 # Release Notes
+- 0.6.0
+  Now officially supports the `transform` feature. The transform operation is useful for projecting a new dataset into an existing embedded space.
+
 - 0.5.0
   
   Now support setting `random_state` when creating `pacmap.PaCMAP` instances for better reproducibility.
@@ -31,6 +34,7 @@ Previous dimensionality reduction techniques focus on either local structure (e.
 - 0.1
 
   Initial Release
+
 # Installation
 You would require the following packages to fully use pacmap on your machine:
 - numpy
@@ -45,7 +49,7 @@ pip install pacmap
 ```
 
 # Usage
-The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [this paragraph](#installation), and then import the module. The following code clip includes a use case about how to use PaCMAP on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
+The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [installation](#installation), and then import the module. The following code clip includes a use case about how to use PaCMAP on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
 
 ```
 import pacmap
@@ -70,7 +74,6 @@ X_transformed = embedding.fit_transform(X, init="pca")
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6)
 ```
-
 
 
 # Benchmarks
