@@ -937,14 +937,17 @@ class PaCMAP(BaseEstimator):
             return Y[self.embedding_.shape[0]:, :]
 
 
-    def sample_pairs(self, X):
+    def sample_pairs(self, X, save_tree):
         '''
         Sample PaCMAP pairs from the dataset.
 
         Parameters
         ---------
         X: numpy.ndarray
-            The high-dimensional dataset that is being projected. 
+            The high-dimensional dataset that is being projected.
+
+        save_tree: bool
+            Whether to save the annoy index tree after finding the nearest neighbor pairs.
         '''
         # Creating pairs
         print_verbose("Finding pairs", self.verbose)
@@ -963,7 +966,7 @@ class PaCMAP(BaseEstimator):
         else:
             print_verbose("Using stored pairs.", self.verbose)
 
-        if not self.save_tree:
+        if not save_tree:
             self.tree = None
 
         return self
