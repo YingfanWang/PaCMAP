@@ -8,6 +8,7 @@ Previous dimensionality reduction techniques focus on either local structure (e.
 
 # Release Notes
 - 0.6.0
+
   Now officially supports the `transform` feature. The transform operation is useful for projecting a new dataset into an existing embedded space.
 
 - 0.5.0
@@ -109,64 +110,11 @@ Other parameters include:
 - `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_dims`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
 
 # Methods
-Similar to the scikit-learn API, the PaCMAP instance can generate embedding for a dataset via the `fit_transform` method. We currently support numpy.ndarray format as our input. Specifically, to convert pandas DataFrame to ndarray format, please refer to the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html). For a more detailed walkthrough, please see the [demo.py](demo.py) file.
+Similar to the scikit-learn API, the PaCMAP instance can generate embedding for a dataset via `fit`, `fit_transform` and `transform` method. We currently support numpy.ndarray format as our input. Specifically, to convert pandas DataFrame to ndarray format, please refer to the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html). For a more detailed walkthrough, please see the [demo](./demo/) directory.
 
 
 # How to use user-specified nearest neighbor
-In version 0.4, we have provided a new option to allow users to use their own nearest neighbors when mapping large-scale
-datasets. The following code clip includes a use case about how to use PaCMAP with the user-specified nearest neighbors:
-
-```
-import pacmap
-import numpy as np
-import matplotlib.pyplot as plt
-from annoy import AnnoyIndex
-
-# loading preprocessed coil_20 dataset
-X = np.load("./data/coil_20.npy", allow_pickle=True)
-X = X.reshape(X.shape[0], -1)
-y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
-
-# create nearest neighbor pairs
-# here we use AnnoyIndex as an example, but the process can be done by any
-# external NN library that provides neighbors into a matrix of the shape
-# (n, n_neighbors_extra), where n_neighbors_extra is greater or equal to
-# n_neighbors in the following example.
-
-n, dim = X.shape
-n_neighbors = 10
-tree = AnnoyIndex(dim, metric='euclidean')
-for i in range(n):
-    tree.add_item(i, X[i, :])
-tree.build(20)
-
-nbrs = np.zeros((n, 20), dtype=np.int32)
-for i in range(n):
-    nbrs_ = tree.get_nns_by_item(i, 20 + 1) # The first nbr is always the point itself
-    nbrs[i, :] = nbrs_[1:]
-
-scaled_dist = np.ones((n, n_neighbors)) # No scaling is needed
-
-# Type casting is needed for numba acceleration
-X = X.astype(np.float32)
-scaled_dist = scaled_dist.astype(np.float32)
-
-# make sure n_neighbors is the same number you want when fitting the data
-pair_neighbors = pacmap.sample_neighbors_pair(X, scaled_dist, nbrs, np.int32(n_neighbors))
-
-# initializing the pacmap instance
-# feed the pair_neighbors into the instance
-embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=n_neighbors, MN_ratio=0.5, FP_ratio=2.0, pair_neighbors=pair_neighbors) 
-
-# fit the data (The index of transformed data corresponds to the index of the original data)
-X_transformed = embedding.fit_transform(X, init="pca")
-
-# visualize the embedding
-fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6)
-```
-
-
+In version 0.4, we have provided a new option to allow users to use their own nearest neighbors when mapping large-scale datasets. Please see the [demo](./demo/specify_nn_demo.py) for a detailed walkthrough about how to use PaCMAP with the user-specified nearest neighbors.
 
 # Reproducing the experiments
 We have provided the code we use to run experiment for better reproducibility. The code are separated into three parts, in three folders, respectively:
