@@ -66,7 +66,7 @@ y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
 
 # initializing the pacmap instance
 # Setting n_neighbors to "None" leads to a default choice shown below in "parameter" section
-embedding = pacmap.PaCMAP(n_dims=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0) 
+embedding = pacmap.PaCMAP(n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0) 
 
 # fit the data (The index of transformed data corresponds to the index of the original data)
 X_transformed = embedding.fit_transform(X, init="pca")
@@ -90,7 +90,7 @@ The following images are visualizations of two datasets: [MNIST](http://yann.lec
 
 The list of the most important parameters is given below. Changing these values will affect the result of dimension reduction significantly, as specified in section 8.3 in our paper.
 
-- `n_dims`: the number of dimension of the output. Default to 2.
+- `n_components`: the number of dimension of the output. Default to 2.
 
 - `n_neighbors`: the number of neighbors considered in the k-Nearest Neighbor graph. Default to 10 for dataset whose sample size is smaller than 10000. For large dataset whose sample size (n) is larger than 10000, the default value is: 10 + 15 * (log10(n) - 4).
 
@@ -107,7 +107,7 @@ Other parameters include:
 - `verbose`: print the progress of pacmap. Default to `False`
 - `lr`: learning rate of the AdaGrad optimizer. Default to 1.
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
-- `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_dims`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
+- `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_components`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
 
 # Methods
 Similar to the scikit-learn API, the PaCMAP instance can generate embedding for a dataset via `fit`, `fit_transform` and `transform` method. We currently support numpy.ndarray format as our input. Specifically, to convert pandas DataFrame to ndarray format, please refer to the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html). For a more detailed walkthrough, please see the [demo](./demo/) directory.

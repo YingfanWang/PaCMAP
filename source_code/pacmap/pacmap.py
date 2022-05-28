@@ -904,17 +904,18 @@ class PaCMAP(BaseEstimator):
         Parameters
         ---------
         X: numpy.ndarray
-            The high-dimensional dataset that is being projected. 
+            The new high-dimensional dataset that is being projected. 
             An embedding will get created based on parameters of the PaCMAP instance.
 
         basis: numpy.ndarray
-            The original dataset that have already been `fit` of `fit_transform`ed.
+            The original dataset that have already been applied during the `fit` or `fit_transform` process.
+            If `save_tree == False`, then the basis is required to reconstruct the ANNOY tree instance.
             If `save_tree == True`, then it's unnecessary to provide the original dataset again.
 
         init: str, optional
             One of ['pca', 'random']. Initialization of the embedding, default='pca'.
             If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset. 
-            The PCA instance will be the same that transformed the original dataset. 
+            The PCA instance will be the same one that was applied to the original dataset during the `fit` or `fit_transform` process. 
             If 'random', then the low dimensional embedding is initialized with a Gaussian distribution.
 
         save_pairs: bool, optional
