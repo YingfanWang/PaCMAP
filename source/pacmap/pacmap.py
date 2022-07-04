@@ -13,7 +13,7 @@ global _RANDOM_STATE
 _RANDOM_STATE = None
 
 
-@numba.njit("f4(f4[:])")
+@numba.njit("f4(f4[:])", cache=True)
 def l2_norm(x):
     """
     L2 norm of a vector.
@@ -24,7 +24,7 @@ def l2_norm(x):
     return np.sqrt(result)
 
 
-@numba.njit("f4(f4[:],f4[:])")
+@numba.njit("f4(f4[:],f4[:])", cache=True)
 def euclid_dist(x1, x2):
     """
     Euclidean distance between two vectors.
@@ -35,7 +35,7 @@ def euclid_dist(x1, x2):
     return np.sqrt(result)
 
 
-@numba.njit("f4(f4[:],f4[:])")
+@numba.njit("f4(f4[:],f4[:])", cache=True)
 def manhattan_dist(x1, x2):
     """
     Manhattan distance between two vectors.
@@ -46,7 +46,7 @@ def manhattan_dist(x1, x2):
     return result
 
 
-@numba.njit("f4(f4[:],f4[:])")
+@numba.njit("f4(f4[:],f4[:])", cache=True)
 def angular_dist(x1, x2):
     """
     Angular (i.e. cosine) distance between two vectors.
@@ -59,7 +59,7 @@ def angular_dist(x1, x2):
     return np.sqrt(2.0 - 2.0 * result / x1_norm / x2_norm)
 
 
-@numba.njit("f4(f4[:],f4[:])")
+@numba.njit("f4(f4[:],f4[:])", cache=True)
 def hamming_dist(x1, x2):
     """
     Hamming distance between two vectors.
@@ -71,7 +71,7 @@ def hamming_dist(x1, x2):
     return result
 
 
-@numba.njit()
+@numba.njit(cache=True)
 def calculate_dist(x1, x2, distance_index):
     if distance_index == 0:  # euclidean
         return euclid_dist(x1, x2)
@@ -83,7 +83,7 @@ def calculate_dist(x1, x2, distance_index):
         return hamming_dist(x1, x2)
 
 
-@numba.njit("i4[:](i4,i4,i4[:])", nogil=True)
+@numba.njit("i4[:](i4,i4,i4[:])", nogil=True, cache=True)
 def sample_FP(n_samples, maximum, reject_ind):
     result = np.empty(n_samples, dtype=np.int32)
     for i in range(n_samples):
@@ -102,7 +102,7 @@ def sample_FP(n_samples, maximum, reject_ind):
     return result
 
 
-@numba.njit("i4[:,:](f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True)
+@numba.njit("i4[:,:](f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True, cache=True)
 def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
     n = X.shape[0]
     pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
@@ -115,7 +115,7 @@ def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
     return pair_neighbors
 
 
-@numba.njit("i4[:,:](i4,f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True)
+@numba.njit("i4[:,:](i4,f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True, cache=True)
 def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
     '''Sample Nearest Neighbor pairs for additional data.'''
     n = X.shape[0]
@@ -129,7 +129,7 @@ def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
     return pair_neighbors
 
 
-@numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True)
+@numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True, cache=True)
 def sample_MN_pair(X, n_MN, option=0):
     '''Sample Mid Near pairs.'''
     n = X.shape[0]
@@ -150,7 +150,7 @@ def sample_MN_pair(X, n_MN, option=0):
     return pair_MN
 
 
-@numba.njit("i4[:,:](f4[:,:],i4,i4,i4)", nogil=True)
+@numba.njit("i4[:,:](f4[:,:],i4,i4,i4)", nogil=True, cache=True)
 def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
     '''Sample Mid Near pairs using the given random state.'''
     n = X.shape[0]
@@ -173,7 +173,7 @@ def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
     return pair_MN
 
 
-@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4)", parallel=True, nogil=True)
+@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4)", parallel=True, nogil=True, cache=True)
 def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
     '''Sample Further pairs.'''
     n = X.shape[0]
@@ -187,7 +187,7 @@ def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
     return pair_FP
 
 
-@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4,i4)", parallel=True, nogil=True)
+@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4,i4)", parallel=True, nogil=True, cache=True)
 def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_state):
     '''Sample Further pairs using the given random state.'''
     n = X.shape[0]
@@ -202,7 +202,7 @@ def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_st
     return pair_FP
 
 
-@numba.njit("f4[:,:](f4[:,:],f4[:],i4[:,:])", parallel=True, nogil=True)
+@numba.njit("f4[:,:](f4[:,:],f4[:],i4[:,:])", parallel=True, nogil=True, cache=True)
 def scale_dist(knn_distance, sig, nbrs):
     '''Scale the distance'''
     n, num_neighbors = knn_distance.shape
@@ -214,7 +214,7 @@ def scale_dist(knn_distance, sig, nbrs):
     return scaled_dist
 
 
-@numba.njit("void(f4[:,:],f4[:,:],f4[:,:],f4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True)
+@numba.njit("void(f4[:,:],f4[:,:],f4[:,:],f4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True, cache=True)
 def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
     '''Update the embedding with the gradient'''
     n, dim = Y.shape
@@ -226,7 +226,7 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
             Y[i][d] -= lr_t * m[i][d]/(math.sqrt(v[i][d]) + 1e-7)
 
 
-@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4)", parallel=True, nogil=True)
+@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4)", parallel=True, nogil=True, cache=True)
 def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
     '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
@@ -276,7 +276,7 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
     return grad
 
 
-@numba.njit("f4[:,:](f4[:,:],i4[:,:],f4)", parallel=True, nogil=True)
+@numba.njit("f4[:,:](f4[:,:],i4[:,:],f4)", parallel=True, nogil=True, cache=True)
 def pacmap_grad_fit(Y, pair_XP, w_neighbors):
     '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
