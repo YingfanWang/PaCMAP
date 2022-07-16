@@ -867,6 +867,7 @@ class PaCMAP(BaseEstimator):
             init,
             self.verbose,
             self.intermediate,
+            self.intermediate_snapshots,
             pca_solution,
             self.tsvd_transformer
         )
