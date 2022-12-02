@@ -94,12 +94,29 @@ generate_figure(embedding, labels, 'test_mnist_seed')
 
 plt.savefig("./test_output/test_mnist_seed.png")
 
-reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)
+reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, save_tree=True)
 embedding = reducer.fit_transform(mnist, init="pca")
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
 ax.axis('off')
 ax.set_title('test_mnist_noseed')
 plt.savefig("./test_output/test_mnist_noseed.png")
+
+# Save and load
+pacmap.save(reducer, "./test_instances/mnist_reducer")
+embedding = reducer.transform(mnist)
+fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
+ax.axis('off')
+ax.set_title('test_saveload')
+plt.savefig("./test_output/test_saveload_before.png")
+
+reducer = pacmap.load("./test_instances/mnist_reducer")
+embedding = reducer.transform(mnist)
+fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
+ax.axis('off')
+ax.set_title('test_saveload')
+plt.savefig("./test_output/test_saveload_after.png")
 
 print('Figures have been generated successfully.')

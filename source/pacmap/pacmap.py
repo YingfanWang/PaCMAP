@@ -1,9 +1,13 @@
-import numpy as np
 import numba
 import time
 import math
 import datetime
 import warnings
+import os
+
+import numpy as np
+import pickle as pkl
+
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn import preprocessing
@@ -665,6 +669,47 @@ def pacmap_fit(
     return Y, intermediate_states
 
 
+def save(instance, common_prefix: str):
+    '''
+    Save PaCMAP instance to a location specified by the user.
+    PaCMAP use ANNOY for graph construction, which cannot be pickled. We provide
+    this function as an alternative to save a PaCMAP instance by storing the
+    ANNOY instance and other parts of PaCMAP separately.
+    '''
+    extra_info = ""
+    if instance.save_tree:
+        # Save the AnnoyIndex
+        instance.tree.save(f"{common_prefix}.ann")
+        temp_tree = instance.tree
+        instance.tree = None # Remove the tree for pickle
+        extra_info = f", and the Annoy Index is saved at {common_prefix}.ann"
+    
+    # Save the other parts
+    with open(f"{common_prefix}.pkl", "wb") as fp:
+        pkl.dump(instance, fp)
+
+    print(f"The PaCMAP instance is successfully saved at {common_prefix}.pkl{extra_info}.")
+    print(f"To load the instance again, please do `pacmap.load({common_prefix})`.")
+
+    if instance.save_tree:
+        # Reload the AnnoyIndex
+        instance.tree = temp_tree # reload the annoy index
+        assert instance.tree is not None
+
+
+def load(common_prefix: str):
+    '''
+    Load PaCMAP instance from a location specified by the user.
+    '''
+    with open(f"{common_prefix}.pkl", "rb") as fp:
+        instance = pkl.load(fp)
+    if os.path.exists(f"{common_prefix}.ann"):
+        instance.tree = AnnoyIndex(instance.num_dimensions, instance.distance)
+        instance.tree.load(f"{common_prefix}.ann") # mmap the file
+
+    return instance
+
+
 class PaCMAP(BaseEstimator):
     '''Pairwise Controlled Manifold Approximation.
 
@@ -826,7 +871,7 @@ class PaCMAP(BaseEstimator):
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.
         '''
 
-        X = X.astype(np.float32)
+        X = np.copy(X).astype(np.float32)
         # Preprocess the dataset
         n, dim = X.shape
         if n <= 0:
@@ -855,6 +900,8 @@ class PaCMAP(BaseEstimator):
         )
         # Sample pairs
         self.sample_pairs(X, self.save_tree)
+        self.num_instances = X.shape[0]
+        self.num_dimensions = X.shape[1]
         # Initialize and Optimize the embedding
         self.embedding_, self.intermediate_states, self.pair_neighbors, self.pair_MN, self.pair_FP = pacmap(
             X,
@@ -924,11 +971,12 @@ class PaCMAP(BaseEstimator):
         '''
 
         # Preprocess the data
-        X = X.astype(np.float32)
+        X = np.copy(X).astype(np.float32)
         X = preprocess_X_new(X, self.distance, self.xmin, self.xmax,
                              self.xmean, self.tsvd_transformer,
                              self.apply_pca, self.verbose)
         if basis is not None and self.tree is None:
+            basis = np.copy(basis).astype(np.float32)
             basis = preprocess_X_new(basis, self.distance, self.xmin, self.xmax,
                                      self.xmean, self.tsvd_transformer,
                                      self.apply_pca, self.verbose)
