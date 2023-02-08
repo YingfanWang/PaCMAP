@@ -948,6 +948,8 @@ class PaCMAP(BaseEstimator):
 
     def transform(self, X, basis=None, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into existing embedding space and return the embedding.
+        Warning: In the current version of implementation, the `transform` method will treat the input as an 
+        additional dataset, which means the same point could be mapped into a different place.
 
         Parameters
         ---------
