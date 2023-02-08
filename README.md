@@ -17,7 +17,7 @@ Previous dimensionality reduction techniques focus on either local structure (e.
 
 - 0.6.0
 
-  Now officially supports the `transform` feature. The transform operation is useful for projecting a new dataset into an existing embedded space.
+  Now officially supports the `transform` feature. The transform operation is useful for projecting a new dataset into an existing embedded space. **In the current version of implementation, the `transform` method will treat the input as an additional dataset, which means the same point could be mapped into a different place.**
 
 - 0.5.0
   
