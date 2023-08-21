@@ -46,7 +46,27 @@ Previous dimensionality reduction techniques focus on either local structure (e.
 
 ## Installation
 
-You can use pip to install pacmap from PyPI. It will automatically install the dependencies for you:
+### Install from conda-forge via conda or mamba
+
+You can use [conda](https://docs.conda.io/en/latest/) or [mamba](https://mamba.readthedocs.io/en/latest/index.html)
+to install PaCMAP from the conda-forge channel.
+
+conda:
+
+```bash
+conda install pacmap -c conda-forge
+```
+
+mamba:
+
+```bash
+mamba install pacmap -c conda-forge
+```
+
+### Install from PyPI via pip
+
+You can use [pip](https://pip.pypa.io/en/stable/) to install pacmap from PyPI.
+It will automatically install the dependencies for you:
 
 ```bash
 pip install pacmap
@@ -54,7 +74,8 @@ pip install pacmap
 
 If you have any problems during the installation of dependencies, such as
 `Failed building wheel for annoy`, you can try to install these dependencies
-with `conda` or `mamba`.
+with `conda` or `mamba`. Users have also reported that in some cases, you may
+wish to use `numba >= 0.57`.
 
 ```bash
 conda install -c conda-forge python-annoy
