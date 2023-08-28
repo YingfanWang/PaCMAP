@@ -1,6 +1,8 @@
 #!/bin/bash
 
 cp ../source/pacmap/pacmap.py ./
+rm -rf test_log
+rm -rf test_output
 mkdir test_log
 mkdir test_output
 python test_general.py > ./test_log/general.log 2> ./test_log/general.err
