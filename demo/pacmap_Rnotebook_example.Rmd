@@ -1,0 +1,87 @@
+---
+title: "PaCMAP Example with Reticulate"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+This notebook demonstrates the ability to utilize PaCMAP in R with the 
+[reticulate package](https://rstudio.github.io/reticulate/).
+
+To utilize PaCMAP, you need to install PaCMAP on a local python environment. 
+The following cell assumes that you have installed PaCMAP in a 
+[conda](https://docs.conda.io/en/latest/) environment. We strongly recommend you
+to use conda to manage your environment.
+
+You can install PaCMAP via executing the following commands in your terminal:
+- `conda install pacmap -c conda-forge` through conda-forge
+- `pip install pacmap` through PyPI.
+
+## Loading the libraries
+First, let us load the required libraries.
+
+```{r}
+# Install Reticulate if you haven't done so
+# install.packages("reticulate")
+reticulate::use_condaenv("your_env_name", conda="your_conda_executable_path", required = TRUE)
+pacmap <- reticulate::import("pacmap")
+```
+
+Loading PaCMAP can lead to fatal error if your PATH variables have not been
+configured properly. In some cases, it could lead to error such as:
+`Intel MKL FATAL ERROR: Cannot load libmkl_intel_thread.1.dylib`. Such error
+can be resolved by removing MKL references in your local environment with the
+following commands:
+
+```{bash}
+conda remove mkl
+conda install nomkl
+conda install pacmap  # install pacmap without MKL references
+```
+
+## Loading the data
+
+Then, let us load some sample data. In this example, we use the [mammoth dataset](https://github.com/PAIR-code/understanding-umap/tree/master/raw_data). 
+The dataset has been stored as a CSV file. `read.csv()` by default will load the
+file into a `list`, which will be interpreted as a Python `dict` when converted 
+by reticulate. PaCMAP is unable to read the `dictionary`. Therefore, we convert 
+the data into a `matrix`, such that it can be properly converted as a 
+`numpy.ndarray` object and read by PaCMAP.
+
+```{r}
+data <- read.csv("mammoth_data.csv")
+data_vector <- unlist(data)
+# Convert the vector into a matrix
+data_matrix <- matrix(data_vector, ncol = length(data))
+```
+
+## Running Dimensionality Reduction
+
+Once we obtained the data in the `matrix` format, we can perform the
+dimensionality reduction easily.
+
+```{r}
+# Initialize PaCMAP instance
+reducer <- pacmap$PaCMAP()
+
+# Perform dimensionality Reduction
+embedding <- reducer$fit_transform(data_matrix)
+```
+
+Finally, let us visualize the embedding we got.
+
+```{r}
+# Visualize the result
+library(ggplot2)
+visualizeMatrixScatterplot <- function(matrix, dotSize = 1) {
+  # Extract the x and y coordinates from the matrix
+  x <- matrix[, 1]
+  y <- matrix[, 2]
+
+  # Create a scatterplot with custom dot size
+  plot(x, y, pch = 19, col = "blue", cex = dotSize, 
+       main = "Scatterplot of 2D Matrix", xlab = "X-axis", ylab = "Y-axis")
+}
+
+visualizeMatrixScatterplot(embedding, 0.5)
+```

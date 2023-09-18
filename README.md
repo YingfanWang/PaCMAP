@@ -1,6 +1,32 @@
 # PaCMAP
 
-## Introduction
+## Table of Contents
+<!-- vscode-markdown-toc -->
+- [PaCMAP](#pacmap)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Release Notes](#release-notes)
+  - [Installation](#installation)
+    - [Install from conda-forge via conda or mamba](#install-from-conda-forge-via-conda-or-mamba)
+    - [Install from PyPI via pip](#install-from-pypi-via-pip)
+  - [Usage](#usage)
+    - [Using PaCMAP in Python](#using-pacmap-in-python)
+    - [Using PaCMAP in R](#using-pacmap-in-r)
+  - [Benchmarks](#benchmarks)
+  - [Parameters](#parameters)
+  - [Methods](#methods)
+  - [How to use user-specified nearest neighbor](#how-to-use-user-specified-nearest-neighbor)
+  - [Reproducing our experiments](#reproducing-our-experiments)
+  - [Citation](#citation)
+  - [License](#license)
+
+<!-- vscode-markdown-toc-config
+	numbering=false
+	autoSave=true
+	/vscode-markdown-toc-config -->
+<!-- /vscode-markdown-toc -->
+
+## <a name='Introduction'></a>Introduction
 
 **Our work has been published at the Journal of Machine Learning Research(JMLR)!**
 
@@ -8,45 +34,13 @@ PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reductio
 
 Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [our paper](https://jmlr.org/papers/v22/20-1061.html).
 
-## Release Notes
+## <a name='ReleaseNotes'></a>Release Notes
 
-- 0.7.0
+Please see the [release notes](release_notes.md).
 
-  Now officially supports the `save` and `load` methods.
-  `pacmap.save(reducer, common_prefix)` will save the PaCMAP instance (and the AnnoyIndex if `save_tree=True`) to the location specified by the `common_prefix`. The PaCMAP instance will be named as `{common_prefix}.pkl` and the Annoy Index will be named as `{common_fix}.ann`. Similarly, `pacmap.load(common_prefix)` loads the saved PaCMAP instance.
+## <a name='Installation'></a>Installation
 
-- 0.6.0
-
-  Now officially supports the `transform` feature. The transform operation is useful for projecting a new dataset into an existing embedded space. **In the current version of implementation, the `transform` method will treat the input as an additional dataset, which means the same point could be mapped into a different place.**
-
-- 0.5.0
-  
-  Now support setting `random_state` when creating `pacmap.PaCMAP` instances for better reproducibility.
-
-  Fix the default initialization to `PCA` to resolve inconsistency between code and description.
-
-  **Setting the `random_state` will affect the numpy random seed in your local environment. However, you may still get different results even if the `random_state` parameter is set to be the same. This is because numba parallelization makes some of the functions undeterministic.** That being said, fixing the random state will always give you the same set of pairs and initialization, which ensure the difference is minimal.
-- 0.4.1
-
-  Now the default value for `n_neighbors` is 10. To enable automatic parameter selection, please set it to `None`.
-- 0.4
-  
-  Now supports user-specified nearest neighbor pairs. See section `How to use user-specified nearest neighbor` below.
-
-  The `fit` function and the `fit_transform` function now has an extra parameter `save_pairs` that decides whether the pairs sampled in this run will be saved to save time for reproducing experiments with other hyperparameters (default to `True`).
-- 0.3
-  
-  Now supports user-specified matrix as initialization through `init` parameter. The matrix must be an numpy ndarray with the shape (N, 2).
-- 0.2
-  
-  Adding adaptive default value for `n_neighbors`: for large datasets with sample size N > 10000, the default value will be set to 10 + 15 * (log10(N) - 4), rounding to the nearest integer.
-- 0.1
-
-  Initial Release
-
-## Installation
-
-### Install from conda-forge via conda or mamba
+### <a name='Installfromconda-forgeviacondaormamba'></a>Install from conda-forge via conda or mamba
 
 You can use [conda](https://docs.conda.io/en/latest/) or [mamba](https://mamba.readthedocs.io/en/latest/index.html)
 to install PaCMAP from the conda-forge channel.
@@ -63,7 +57,7 @@ mamba:
 mamba install pacmap -c conda-forge
 ```
 
-### Install from PyPI via pip
+### <a name='InstallfromPyPIviapip'></a>Install from PyPI via pip
 
 You can use [pip](https://pip.pypa.io/en/stable/) to install pacmap from PyPI.
 It will automatically install the dependencies for you:
@@ -82,7 +76,9 @@ conda install -c conda-forge python-annoy
 pip install pacmap
 ```
 
-## Usage
+## <a name='Usage'></a>Usage
+
+### <a name='UsingPaCMAPinPython'></a>Using PaCMAP in Python
 
 The `pacmap` package is designed to be compatible with `scikit-learn`, meaning that it has a similar interface with functions in the `sklearn.manifold` module. To run `pacmap` on your own dataset, you should install the package following the instructions in [installation](#installation), and then import the module. The following code clip includes a use case about how to use PaCMAP on the [COIL-20](https://www.cs.columbia.edu/CAVE/software/softlib/coil-20.php) dataset:
 
@@ -110,7 +106,13 @@ fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6)
 ```
 
-## Benchmarks
+### <a name='UsingPaCMAPinR'></a>Using PaCMAP in R
+
+You can also use PaCMAP in R with the [reticulate package](https://rstudio.github.io/reticulate/).
+We provide a sample [R notebook](./demo/pacmap_Rnotebook_example.Rmd) that demonstrates
+how PaCMAP can be called in R for visualization.
+
+## <a name='Benchmarks'></a>Benchmarks
 
 The following images are visualizations of two datasets: [MNIST](http://yann.lecun.com/exdb/mnist/) (n=70,000, d=784) and [Mammoth](https://github.com/PAIR-code/understanding-umap/tree/master/raw_data) (n=10,000, d=3), generated by PaCMAP. The two visualizations demonstrate the local and global structure's preservation ability of PaCMAP respectively.
 
@@ -118,7 +120,7 @@ The following images are visualizations of two datasets: [MNIST](http://yann.lec
 
 ![Mammoth](/images/Mammoth.jpg?raw=true "PaCMAP's result on Mammoth")
 
-## Parameters
+## <a name='Parameters'></a>Parameters
 
 The list of the most important parameters is given below. Changing these values will affect the result of dimension reduction significantly, as specified in section 8.3 in our paper.
 
@@ -143,15 +145,15 @@ Other parameters include:
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
 - `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_components`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
 
-## Methods
+## <a name='Methods'></a>Methods
 
 Similar to the scikit-learn API, the PaCMAP instance can generate embedding for a dataset via `fit`, `fit_transform` and `transform` method. We currently support numpy.ndarray format as our input. Specifically, to convert pandas DataFrame to ndarray format, please refer to the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html). For a more detailed walkthrough, please see the [demo](./demo/) directory.
 
-## How to use user-specified nearest neighbor
+## <a name='Howtouseuser-specifiednearestneighbor'></a>How to use user-specified nearest neighbor
 
 In version 0.4, we have provided a new option to allow users to use their own nearest neighbors when mapping large-scale datasets. Please see the [demo](./demo/specify_nn_demo.py) for a detailed walkthrough about how to use PaCMAP with the user-specified nearest neighbors.
 
-## Reproducing our experiments
+## <a name='Reproducingourexperiments'></a>Reproducing our experiments
 
 We have provided the code we use to run experiment for better reproducibility. The code are separated into three parts, in three folders, respectively:
 
@@ -161,7 +163,7 @@ We have provided the code we use to run experiment for better reproducibility. T
 
 After downloading the code, you may need to specify some of the paths in the script to make them fully functional.
 
-## Citation
+## <a name='Citation'></a>Citation
 
 If you used PaCMAP in your publication, or you used the implementation in this repository, please cite our paper using the following bibtex:
 
@@ -178,6 +180,6 @@ If you used PaCMAP in your publication, or you used the implementation in this r
 }
 ```
 
-## License
+## <a name='License'></a>License
 
 Please see the license file.

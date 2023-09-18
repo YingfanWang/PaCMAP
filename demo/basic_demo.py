@@ -23,7 +23,7 @@ fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6)
 
 # saving the reducer
-pacmap.save(reducer, "./test_instances/mnist_reducer")
+pacmap.save(reducer, "./coil_20_reducer")
 
 # loading the reducer
-pacmap.load("./test_instances/mnist_reducer")
+pacmap.load("./coil_20_reducer")
