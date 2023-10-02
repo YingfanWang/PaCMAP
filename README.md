@@ -180,6 +180,21 @@ If you used PaCMAP in your publication, or you used the implementation in this r
 }
 ```
 
+For PaCMAP's performance on biological dataset, please check the following paper:
+
+```bibtex
+@article{huang2022towards,
+  title={Towards a comprehensive evaluation of dimension reduction methods for transcriptomic data visualization},
+  author={Huang, Haiyang and Wang, Yingfan and Rudin, Cynthia and Browne, Edward P},
+  journal={Communications biology},
+  volume={5},
+  number={1},
+  pages={719},
+  year={2022},
+  publisher={Nature Publishing Group UK London}
+}
+```
+
 ## <a name='License'></a>License
 
 Please see the license file.
