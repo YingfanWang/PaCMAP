@@ -1,5 +1,9 @@
 # Release Notes
 
+- 0.7.1
+
+  Update the required `numba` version to `numba >= 0.57`.
+
 - 0.7.0
 
   Now officially supports the `save` and `load` methods.
