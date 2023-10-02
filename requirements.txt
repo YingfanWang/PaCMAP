@@ -1,4 +1,4 @@
 numpy
-numba
+numba >= 0.57
 scikit-learn
 annoy
