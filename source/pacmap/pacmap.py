@@ -229,53 +229,43 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
             v[i][d] += (1 - beta2) * (grad[i][d]**2 - v[i][d])
             Y[i][d] -= lr_t * m[i][d]/(math.sqrt(v[i][d]) + 1e-7)
 
-
-@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4)", parallel=True, nogil=True, cache=True)
+ 
 def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
     '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
     grad = np.zeros((n+1, dim), dtype=np.float32)
-    y_ij = np.empty(dim, dtype=np.float32)
     loss = np.zeros(4, dtype=np.float32)
+
     # NN
-    for t in range(pair_neighbors.shape[0]):
-        i = pair_neighbors[t, 0]
-        j = pair_neighbors[t, 1]
-        d_ij = 1.0
-        for d in range(dim):
-            y_ij[d] = Y[i, d] - Y[j, d]
-            d_ij += y_ij[d] ** 2
-        loss[0] += w_neighbors * (d_ij/(10. + d_ij))
-        w1 = w_neighbors * (20./(10. + d_ij) ** 2)
-        for d in range(dim):
-            grad[i, d] += w1 * y_ij[d]
-            grad[j, d] -= w1 * y_ij[d]
+    y_ij = Y[pair_neighbors[:, 0], :] - Y[pair_neighbors[:, 1], :]
+    d_ij = 1.0 + np.square(y_ij).sum(axis=1)
+    w1 = w_neighbors * (20./(10. + d_ij) ** 2)
+
+    grad[pair_neighbors[:, 0]] += w1[:, np.newaxis] * y_ij
+    grad[pair_neighbors[:, 1]] -= w1[:, np.newaxis] * y_ij
+
+    loss[0] += np.sum(w_neighbors * (d_ij/(10. + d_ij)))
+
     # MN
-    for tt in range(pair_MN.shape[0]):
-        i = pair_MN[tt, 0]
-        j = pair_MN[tt, 1]
-        d_ij = 1.0
-        for d in range(dim):
-            y_ij[d] = Y[i][d] - Y[j][d]
-            d_ij += y_ij[d] ** 2
-        loss[1] += w_MN * d_ij/(10000. + d_ij)
-        w = w_MN * 20000./(10000. + d_ij) ** 2
-        for d in range(dim):
-            grad[i, d] += w * y_ij[d]
-            grad[j, d] -= w * y_ij[d]
+    y_ij = Y[pair_MN[:, 0], :] - Y[pair_MN[:, 1], :]
+    d_ij = 1.0 + np.square(y_ij).sum(axis=1)
+    w1 = w_MN * (20000./(10000. + d_ij) ** 2)
+
+    grad[pair_MN[:, 0]] += w1[:, np.newaxis] * y_ij
+    grad[pair_MN[:, 1]] -= w1[:, np.newaxis] * y_ij
+
+    loss[1] += np.sum(w_neighbors * (d_ij/(10000. + d_ij)))
+
     # FP
-    for ttt in range(pair_FP.shape[0]):
-        i = pair_FP[ttt, 0]
-        j = pair_FP[ttt, 1]
-        d_ij = 1.0
-        for d in range(dim):
-            y_ij[d] = Y[i, d] - Y[j, d]
-            d_ij += y_ij[d] ** 2
-        loss[2] += w_FP * 1./(1. + d_ij)
-        w1 = w_FP * 2./(1. + d_ij) ** 2
-        for d in range(dim):
-            grad[i, d] -= w1 * y_ij[d]
-            grad[j, d] += w1 * y_ij[d]
+    y_ij = Y[pair_FP[:, 0], :] - Y[pair_FP[:, 1], :]
+    d_ij = 1.0 + np.square(y_ij).sum(axis=1)
+    w1 = w_FP * (2./(1. + d_ij) ** 2)
+
+    grad[pair_FP[:, 0]] += w1[:, np.newaxis] * y_ij
+    grad[pair_FP[:, 1]] -= w1[:, np.newaxis] * y_ij
+
+    loss[2] += np.sum(w_neighbors * (d_ij/(1. + d_ij)))
+
     grad[-1, 0] = loss.sum()
     return grad
 
