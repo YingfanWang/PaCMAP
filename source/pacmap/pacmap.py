@@ -218,18 +218,18 @@ def scale_dist(knn_distance, sig, nbrs):
     return scaled_dist
 
 
-@numba.njit("void(f4[:,:],f4[:,:],f4[:,:],f4[:,:],f4,f4,f4,i4)", parallel=True, nogil=True, cache=True)
+@numba.njit("void(f4[:,:],f4[:,:],f4[:,:],f4[:,:],f4,f4,f4,i4)", nogil=True, cache=True)
 def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
     '''Update the embedding with the gradient'''
-    n, dim = Y.shape
+    n, _ = Y.shape
     lr_t = lr * math.sqrt(1.0 - beta2**(itr+1)) / (1.0 - beta1**(itr+1))
-    for i in numba.prange(n):
-        for d in numba.prange(dim):
-            m[i][d] += (1 - beta1) * (grad[i][d] - m[i][d])
-            v[i][d] += (1 - beta2) * (grad[i][d]**2 - v[i][d])
-            Y[i][d] -= lr_t * m[i][d]/(math.sqrt(v[i][d]) + 1e-7)
 
- 
+    m[:, :] += (1 - beta1) * (grad[0:n] - m)
+    v[:, :] += (1 - beta2) * (grad[0:n]**2 - v)
+    Y[:, :] -= lr_t * m/(np.sqrt(v) + 1e-7)
+
+
+@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4)", nogil=True, cache=True)
 def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
     '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
