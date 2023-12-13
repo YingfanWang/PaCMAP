@@ -536,19 +536,24 @@ def pacmap(
         intermediate_states = None
 
     # Initialize the embedding
-    if (Yinit is None or Yinit == "pca"):
+    if isinstance(Yinit, np.ndarray):
+        Yinit = Yinit.astype(np.float32)
+        scaler = preprocessing.StandardScaler().fit(Yinit)
+        Y = scaler.transform(Yinit) * 0.0001
+    elif Yinit is None or (isinstance(Yinit, str) and Yinit == "pca"):
         if pca_solution:
             Y = 0.01 * X[:, :n_dims]
         else:
             Y = 0.01 * tsvd.transform(X).astype(np.float32)
-    elif Yinit == "random":  # random or hamming distance
+    elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
         if _RANDOM_STATE is not None:
             np.random.seed(_RANDOM_STATE)
         Y = np.random.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
-    else:  # user_supplied matrix
-        Yinit = Yinit.astype(np.float32)
-        scaler = preprocessing.StandardScaler().fit(Yinit)
-        Y = scaler.transform(Yinit) * 0.0001
+    else:
+        raise ValueError((f"The argument init is of the type {type(Yinit)}. "
+                          "Currently, PaCMAP only supports user supplied "
+                          "numpy.ndarray object as input, or one of "
+                          "['pca', 'random']."))
 
     # Initialize parameters for optimizer
     w_MN_init = 1000.
@@ -613,22 +618,26 @@ def pacmap_fit(
         intermediate_states = None
 
     # Initialize the embedding
-    if Yinit is None or Yinit == "pca":
+    if isinstance(Yinit, np.ndarray):
+        Yinit = Yinit.astype(np.float32)
+        scaler = preprocessing.StandardScaler().fit(Yinit)
+        Y = np.concatenate([embedding, scaler.transform(Yinit) * 0.0001])
+    elif Yinit is None or (isinstance(Yinit, str) and Yinit == "pca"):
         if pca_solution:
             Y = np.concatenate([embedding, 0.01 * X[:, :n_dims]])
         else:
             Y = np.concatenate(
                 [embedding, 0.01 * tsvd.transform(X).astype(np.float32)])
-
-    elif Yinit == "random":
+    elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
         if _RANDOM_STATE is not None:
             np.random.seed(_RANDOM_STATE)
         Y = np.concatenate(
             [embedding, 0.0001 * np.random.normal(size=[X.shape[0], n_dims]).astype(np.float32)])
-    else:  # user_supplied matrix
-        Yinit = Yinit.astype(np.float32)
-        scaler = preprocessing.StandardScaler().fit(Yinit)
-        Y = np.concatenate([embedding, scaler.transform(Yinit) * 0.0001])
+    else:
+        raise ValueError((f"The argument init is of the type {type(Yinit)}. "
+                          "Currently, PaCMAP only supports user supplied "
+                          "numpy.ndarray object as input, or one of "
+                          "['pca', 'random']."))
 
     beta1 = 0.9
     beta2 = 0.999
