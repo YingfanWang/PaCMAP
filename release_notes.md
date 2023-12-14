@@ -1,5 +1,9 @@
 # Release Notes
 
+- 0.7.2
+
+  `importlib.metadata` is now used to find the installed package version instead of the deprecated `pkg_resources` package.
+
 - 0.7.1
 
   Update the required `numba` version to `numba >= 0.57`.
