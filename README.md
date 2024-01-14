@@ -126,7 +126,7 @@ The list of the most important parameters is given below. Changing these values 
 
 - `n_components`: the number of dimension of the output. Default to 2.
 
-- `n_neighbors`: the number of neighbors considered in the k-Nearest Neighbor graph. Default to 10 for dataset whose sample size is smaller than 10000. For large dataset whose sample size (n) is larger than 10000, the default value is: 10 + 15 * (log10(n) - 4).
+- `n_neighbors`: the number of neighbors considered in the k-Nearest Neighbor graph. Default to 10. We also allow this parameter to be set to `None` to enable the auto-selection of number of neighbors: the number of neighbors will be set to 10 for dataset whose sample size is smaller than 10000. For large dataset whose sample size (n) is larger than 10000, the value is: 10 + 15 * (log10(n) - 4).
 
 - `MN_ratio`: the ratio of the number of mid-near pairs to the number of neighbors, `n_MN` = <img src="https://latex.codecogs.com/gif.latex?\lfloor" title="\lfloor" /> `n_neighbors * MN_ratio` <img src="https://latex.codecogs.com/gif.latex?\rfloor" title="\rfloor" /> . Default to 0.5.
 

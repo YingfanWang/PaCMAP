@@ -8,10 +8,13 @@ output:
 This notebook demonstrates the ability to utilize PaCMAP in R with the 
 [reticulate package](https://rstudio.github.io/reticulate/).
 
+## Installation
 To utilize PaCMAP, you need to install PaCMAP on a local python environment. 
 The following cell assumes that you have installed PaCMAP in a 
-[conda](https://docs.conda.io/en/latest/) environment. We strongly recommend you
-to use conda to manage your environment.
+[conda](https://docs.conda.io/en/latest/) environment. 
+
+**We strongly recommend you to use conda to manage your environment, and create
+a environment for pacmap.**
 
 You can install PaCMAP via executing the following commands in your terminal:
 - `conda install pacmap -c conda-forge` through conda-forge
