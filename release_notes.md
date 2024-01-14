@@ -1,5 +1,10 @@
 # Release Notes
 
+- 0.7.2
+
+  Fix the problem in using user-provided initialization, as well as discrepancy
+  between documentation and code in default `n_neighbors` parameter.
+
 - 0.7.1
 
   Update the required `numba` version to `numba >= 0.57`.
