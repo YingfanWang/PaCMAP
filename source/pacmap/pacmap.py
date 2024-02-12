@@ -312,7 +312,7 @@ def find_weight(w_MN_init, itr, *, num_iters):
     (phase_1_iters, phase_2_iters, _) = num_iters
 
     if itr < phase_1_iters:
-        w_MN = (1 - itr/100) * w_MN_init + itr/100 * 3.0
+        w_MN = (1 - itr/phase_1_iters) * w_MN_init + itr/phase_1_iters * 3.0
         w_neighbors = 2.0
         w_FP = 1.0
     elif itr < phase_1_iters + phase_2_iters:
