@@ -759,8 +759,10 @@ class PaCMAP(BaseEstimator):
     lr: float, default=1.0
         Learning rate of the Adam optimizer for embedding.
 
-    num_iters: tuple[int, int, int], default=(100, 100, 250)
-        Number of iterations for the optimization of embedding for each stage.
+    num_iters: tuple[int, int, int] or int, default=(100, 100, 250)
+        Tuple with number of iterations for the optimization of embedding for each stage.
+        If a single integer is provided, this parameter will be set to (100, 100, num_iters), following the original
+        implementation.
 
     verbose: bool, default=False
         Whether to print additional information during initialization and fitting.
@@ -813,7 +815,7 @@ class PaCMAP(BaseEstimator):
         self.pair_FP = pair_FP
         self.distance = distance
         self.lr = lr
-        self.num_iters = num_iters
+        self.num_iters = num_iters if hasattr(num_iters, "__len__") else (100, 100, num_iters)
         self.apply_pca = apply_pca
         self.verbose = verbose
         self.intermediate = intermediate
