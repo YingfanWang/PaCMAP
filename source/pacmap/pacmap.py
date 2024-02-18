@@ -307,13 +307,15 @@ def pacmap_grad_fit(Y, pair_XP, w_neighbors):
     return grad
 
 
-def find_weight(w_MN_init, itr):
+def find_weight(w_MN_init, itr, *, num_iters):
     '''Find the corresponding weight given the index of an iteration'''
-    if itr < 100:
-        w_MN = (1 - itr/100) * w_MN_init + itr/100 * 3.0
+    (phase_1_iters, phase_2_iters, _) = num_iters
+
+    if itr < phase_1_iters:
+        w_MN = (1 - itr/phase_1_iters) * w_MN_init + itr/phase_1_iters * 3.0
         w_neighbors = 2.0
         w_FP = 1.0
-    elif itr < 200:
+    elif itr < phase_1_iters + phase_2_iters:
         w_MN = 3.0
         w_neighbors = 3
         w_FP = 1
@@ -569,8 +571,10 @@ def pacmap(
     print_verbose(
         (pair_neighbors.shape, pair_MN.shape, pair_FP.shape), verbose)
 
-    for itr in range(num_iters):
-        w_MN, w_neighbors, w_FP = find_weight(w_MN_init, itr)
+    num_iters_total = sum(num_iters)
+
+    for itr in range(num_iters_total):
+        w_MN, w_neighbors, w_FP = find_weight(w_MN_init, itr, num_iters=num_iters)
 
         grad = pacmap_grad(Y, pair_neighbors, pair_MN,
                            pair_FP, w_neighbors, w_MN, w_FP)
@@ -650,13 +654,10 @@ def pacmap_fit(
 
     print_verbose(pair_XP.shape, verbose)
 
-    for itr in range(num_iters):
-        if itr < 100:
-            w_neighbors = 2.0
-        elif itr < 200:
-            w_neighbors = 3.0
-        else:
-            w_neighbors = 1.0
+    num_iters_total = sum(num_iters)
+
+    for itr in range(num_iters_total):
+        _, w_neighbors, _ = find_weight(0, itr, num_iters=num_iters)
 
         grad = pacmap_grad_fit(Y, pair_XP, w_neighbors)
         C = grad[-1, 0]
@@ -758,9 +759,10 @@ class PaCMAP(BaseEstimator):
     lr: float, default=1.0
         Learning rate of the Adam optimizer for embedding.
 
-    num_iters: int, default=450
-        Number of iterations for the optimization of embedding. 
-        Due to the stage-based nature, we suggest this parameter to be greater than 250 for all three stages to be utilized.
+    num_iters: tuple[int, int, int] or int, default=(100, 100, 250)
+        Tuple with number of iterations for the optimization of embedding for each stage.
+        If a single integer is provided, this parameter will be set to (100, 100, num_iters), following the original
+        implementation.
 
     verbose: bool, default=False
         Whether to print additional information during initialization and fitting.
@@ -795,7 +797,7 @@ class PaCMAP(BaseEstimator):
                  pair_FP=None,
                  distance="euclidean",
                  lr=1.0,
-                 num_iters=450,
+                 num_iters=(100, 100, 250),
                  verbose=False,
                  apply_pca=True,
                  intermediate=False,
@@ -813,7 +815,7 @@ class PaCMAP(BaseEstimator):
         self.pair_FP = pair_FP
         self.distance = distance
         self.lr = lr
-        self.num_iters = num_iters
+        self.num_iters = num_iters if hasattr(num_iters, "__len__") else (100, 100, num_iters)
         self.apply_pca = apply_pca
         self.verbose = verbose
         self.intermediate = intermediate
