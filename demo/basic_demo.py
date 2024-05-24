@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # where N is the number of samples and D is the dimension of each sample
 X = np.load("../data/coil_20.npy", allow_pickle=True)
 X = X.reshape(X.shape[0], -1)
-y = np.load("./data/coil_20_labels.npy", allow_pickle=True)
+y = np.load("../data/coil_20_labels.npy", allow_pickle=True)
 
 # Initialize the pacmap instance
 # By default, the n_neighbors is set to 10.
