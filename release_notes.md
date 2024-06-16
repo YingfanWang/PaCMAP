@@ -1,5 +1,10 @@
 # Release Notes
 
+- 0.7.3
+  Fix the problem when the sample size is smaller than the number of neighbors,
+  PaCMAP will crash without proper error report. Now the PaCMAP will reduce the
+  number of neighbors and generate a warning message.
+
 - 0.7.2
 
   Fix the problem in using user-provided initialization, as well as discrepancy
