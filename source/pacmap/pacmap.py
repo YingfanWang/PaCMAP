@@ -392,7 +392,8 @@ def print_verbose(msg, verbose, **kwargs):
         print(msg, **kwargs)
 
 
-def generate_extra_pair_basis(basis, X,
+def generate_extra_pair_basis(basis,
+                              X,
                               n_neighbors,
                               tree: AnnoyIndex,
                               distance='euclidean',
@@ -418,6 +419,7 @@ def generate_extra_pair_basis(basis, X,
         n = tree.get_n_items()
 
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
+    n_neighbors = min(n_neighbors, n - 1)
     nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
     knn_distances = np.empty((npr, n_neighbors_extra), dtype=np.float32)
 
@@ -426,17 +428,6 @@ def generate_extra_pair_basis(basis, X,
             X[i, :], n_neighbors_extra, include_distances=True)
 
     print_verbose("Found nearest neighbor", verbose)
-    # sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
-    # print_verbose("Calculated sigma", verbose)
-
-    # Debug
-    # print_verbose(f"Sigma is of the scale of {sig.shape}", verbose)
-    # print_verbose(f"KNN dist is of shape scale of {knn_distances.shape}", verbose)
-    # print_verbose(f"nbrs max: {nbrs.max()}", verbose)
-
-    # scaling the distances is not possible since we don't always track the basis
-    # scaled_dist = scale_dist(knn_distances, sig, nbrs)
-    print_verbose("Found scaled dist", verbose)
 
     pair_neighbors = sample_neighbors_pair_basis(
         n, X, knn_distances, nbrs, n_neighbors)
@@ -456,6 +447,7 @@ def generate_pair(
     n, dim = X.shape
     # sample more neighbors than needed
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
+    n_neighbors = min(n_neighbors, n - 1)
     tree = AnnoyIndex(dim, metric=distance)
     if _RANDOM_STATE is not None:
         tree.set_seed(_RANDOM_STATE)
@@ -893,6 +885,8 @@ class PaCMAP(BaseEstimator):
         self.pca_solution = pca_solution
         # Deciding the number of pairs
         self.decide_num_pairs(n)
+        if n - 1 < self.n_neighbors:
+            warnings.warn("Sample size is smaller than n_neighbors. n_neighbors will be reduced.")
         print_verbose(
             "PaCMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={}, "
             "lr={}, n_iters={}, apply_pca={}, opt_method='adam', "
