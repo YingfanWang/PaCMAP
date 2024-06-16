@@ -877,8 +877,8 @@ class PaCMAP(BaseEstimator):
         X = np.copy(X).astype(np.float32)
         # Preprocess the dataset
         n, dim = X.shape
-        if n <= 0:
-            raise ValueError("The sample size must be larger than 0")
+        if n <= 1:
+            raise ValueError("The sample size must be larger than 1.")
         X, pca_solution, tsvd, self.xmin, self.xmax, self.xmean = preprocess_X(
             X, self.distance, self.apply_pca, self.verbose, self.random_state, dim, self.n_components)
         self.tsvd_transformer = tsvd

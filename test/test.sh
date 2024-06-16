@@ -11,3 +11,4 @@ python test_metric.py  > ./test_log/metric.log 2> ./test_log/metric.err
 python test_transform.py > ./test_log/transform.log 2> ./test_log/transform.err
 python test_transform_tree.py > ./test_log/transform_tree.log 2> ./test_log/transform_tree.err
 python test_transform_iris.py > ./test_log/transform_iris.log 2> ./test_log/transform_iris.err
+python test_issue72.py
