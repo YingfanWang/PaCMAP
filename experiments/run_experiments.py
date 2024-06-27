@@ -1,4 +1,5 @@
 # pylint: skip-file
+# flake8: noqa
 import umap
 import trimap
 import FlowCal

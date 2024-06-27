@@ -1,4 +1,5 @@
 # pylint: skip-file
+# flake8: noqa
 import os
 import json
 import matplotlib.cm as cm
