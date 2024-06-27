@@ -89,6 +89,7 @@ def calculate_dist(x1, x2, distance_index):
 
 @numba.njit("i4[:](i4,i4,i4[:])", nogil=True, cache=True)
 def sample_FP(n_samples, maximum, reject_ind):
+    """Sample `n_samples` samples from `maximum` points, excluding the `reject_ind` points."""
     result = np.empty(n_samples, dtype=np.int32)
     for i in range(n_samples):
         reject_sample = True
@@ -97,11 +98,12 @@ def sample_FP(n_samples, maximum, reject_ind):
             for k in range(i):
                 if j == result[k]:
                     break
-            for k in range(reject_ind.shape[0]):
-                if j == reject_ind[k]:
-                    break
             else:
-                reject_sample = False
+                for k in range(reject_ind.shape[0]):
+                    if j == reject_ind[k]:
+                        break
+                else:
+                    reject_sample = False
         result[i] = j
     return result
 
@@ -222,7 +224,7 @@ def scale_dist(knn_distance, sig, nbrs):
 def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
     '''Update the embedding with the gradient'''
     n, dim = Y.shape
-    lr_t = lr * math.sqrt(1.0 - beta2**(itr+1)) / (1.0 - beta1**(itr+1))
+    lr_t = lr * math.sqrt(1.0 - beta2 ** (itr + 1)) / (1.0 - beta1 ** (itr + 1))
     for i in numba.prange(n):
         for d in numba.prange(dim):
             m[i][d] += (1 - beta1) * (grad[i][d] - m[i][d])
@@ -234,7 +236,7 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
 def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
     '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
-    grad = np.zeros((n+1, dim), dtype=np.float32)
+    grad = np.zeros((n + 1, dim), dtype=np.float32)
     y_ij = np.empty(dim, dtype=np.float32)
     loss = np.zeros(4, dtype=np.float32)
     # NN
@@ -245,8 +247,8 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             y_ij[d] = Y[i, d] - Y[j, d]
             d_ij += y_ij[d] ** 2
-        loss[0] += w_neighbors * (d_ij/(10. + d_ij))
-        w1 = w_neighbors * (20./(10. + d_ij) ** 2)
+        loss[0] += w_neighbors * (d_ij / (10. + d_ij))
+        w1 = w_neighbors * (20. / (10. + d_ij) ** 2)
         for d in range(dim):
             grad[i, d] += w1 * y_ij[d]
             grad[j, d] -= w1 * y_ij[d]
@@ -258,8 +260,8 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             y_ij[d] = Y[i][d] - Y[j][d]
             d_ij += y_ij[d] ** 2
-        loss[1] += w_MN * d_ij/(10000. + d_ij)
-        w = w_MN * 20000./(10000. + d_ij) ** 2
+        loss[1] += w_MN * d_ij / (10000. + d_ij)
+        w = w_MN * 20000. / (10000. + d_ij) ** 2
         for d in range(dim):
             grad[i, d] += w * y_ij[d]
             grad[j, d] -= w * y_ij[d]
@@ -271,8 +273,8 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             y_ij[d] = Y[i, d] - Y[j, d]
             d_ij += y_ij[d] ** 2
-        loss[2] += w_FP * 1./(1. + d_ij)
-        w1 = w_FP * 2./(1. + d_ij) ** 2
+        loss[2] += w_FP * 1. / (1. + d_ij)
+        w1 = w_FP * 2. / (1. + d_ij) ** 2
         for d in range(dim):
             grad[i, d] -= w1 * y_ij[d]
             grad[j, d] += w1 * y_ij[d]
