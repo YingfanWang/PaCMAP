@@ -111,7 +111,7 @@ def sample_FP(n_samples, maximum, reject_ind):
 @numba.njit("i4[:,:](f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True, cache=True)
 def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
     n = X.shape[0]
-    pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
+    pair_neighbors = np.empty((n * n_neighbors, 2), dtype=np.int32)
 
     for i in numba.prange(n):
         scaled_sort = np.argsort(scaled_dist[i])
@@ -125,7 +125,7 @@ def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
 def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
     '''Sample Nearest Neighbor pairs for additional data.'''
     n = X.shape[0]
-    pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
+    pair_neighbors = np.empty((n * n_neighbors, 2), dtype=np.int32)
 
     for i in numba.prange(n):
         scaled_sort = np.argsort(scaled_dist[i])
@@ -139,10 +139,14 @@ def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
 def sample_MN_pair(X, n_MN, option=0):
     '''Sample Mid Near pairs.'''
     n = X.shape[0]
-    pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
+    pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
-        for jj in range(n_MN):
-            sampled = np.random.randint(0, n, 6)
+        for j in range(n_MN):
+            sampled = sample_FP(
+                6,
+                n,
+                reject_ind=np.concatenate([[i], pair_MN[i * n_MN:i * n_MN + j, 1]])
+            )
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
                 dist_list[t] = calculate_dist(
@@ -151,8 +155,8 @@ def sample_MN_pair(X, n_MN, option=0):
             dist_list = np.delete(dist_list, [min_dic])
             sampled = np.delete(sampled, [min_dic])
             picked = sampled[np.argmin(dist_list)]
-            pair_MN[i*n_MN + jj][0] = i
-            pair_MN[i*n_MN + jj][1] = picked
+            pair_MN[i * n_MN + j][0] = i
+            pair_MN[i * n_MN + j][1] = picked
     return pair_MN
 
 
@@ -160,12 +164,16 @@ def sample_MN_pair(X, n_MN, option=0):
 def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
     '''Sample Mid Near pairs using the given random state.'''
     n = X.shape[0]
-    pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
+    pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
-        for jj in range(n_MN):
+        for j in range(n_MN):
             # Shifting the seed to prevent sampling the same pairs
-            np.random.seed(random_state + i * n_MN + jj)
-            sampled = np.random.randint(0, n, 6)
+            np.random.seed(random_state + i * n_MN + j)
+            sampled = sample_FP(
+                6,
+                n,
+                reject_ind=np.concatenate([[i], pair_MN[i * n_MN:i * n_MN + j, 1]])
+            )
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
                 dist_list[t] = calculate_dist(
@@ -174,8 +182,8 @@ def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
             dist_list = np.delete(dist_list, [min_dic])
             sampled = np.delete(sampled, [min_dic])
             picked = sampled[np.argmin(dist_list)]
-            pair_MN[i*n_MN + jj][0] = i
-            pair_MN[i*n_MN + jj][1] = picked
+            pair_MN[i * n_MN + j][0] = i
+            pair_MN[i * n_MN + j][1] = picked
     return pair_MN
 
 
@@ -185,9 +193,12 @@ def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
+        FP_index = sample_FP(
+            n_FP,
+            n,
+            np.concatenate([[i], pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1]])
+        )
         for k in numba.prange(n_FP):
-            FP_index = sample_FP(
-                n_FP, n, pair_neighbors[i*n_neighbors: i*n_neighbors + n_neighbors][1])
             pair_FP[i*n_FP + k][0] = i
             pair_FP[i*n_FP + k][1] = FP_index[k]
     return pair_FP
@@ -199,10 +210,13 @@ def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_st
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
+        np.random.seed(random_state + i)
+        FP_index = sample_FP(
+            n_FP,
+            n,
+            np.concatenate([[i], pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1]])
+        )
         for k in numba.prange(n_FP):
-            np.random.seed(random_state+i*n_FP+k)
-            FP_index = sample_FP(
-                n_FP, n, pair_neighbors[i*n_neighbors: i*n_neighbors + n_neighbors][1])
             pair_FP[i*n_FP + k][0] = i
             pair_FP[i*n_FP + k][1] = FP_index[k]
     return pair_FP
