@@ -1,3 +1,4 @@
+# pylint: skip-file
 import umap
 import trimap
 import FlowCal
