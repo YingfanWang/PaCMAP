@@ -22,6 +22,7 @@ jobs:
       run: |
         conda install pip
         pip install -r requirements.txt
+        pip install .
     - name: Lint with flake8
       run: |
         conda install flake8
