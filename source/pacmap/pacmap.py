@@ -87,14 +87,16 @@ def calculate_dist(x1, x2, distance_index):
         return hamming_dist(x1, x2)
 
 
-@numba.njit("i4[:](i4,i4,i4[:])", nogil=True, cache=True)
-def sample_FP(n_samples, maximum, reject_ind):
+@numba.njit("i4[:](i4,i4,i4[:],i4)", nogil=True, cache=True)
+def sample_FP(n_samples, maximum, reject_ind, self_ind):
     """Sample `n_samples` samples from `maximum` points, excluding the `reject_ind` points."""
     result = np.empty(n_samples, dtype=np.int32)
     for i in range(n_samples):
         reject_sample = True
         while reject_sample:
             j = np.random.randint(maximum)
+            if j == self_ind:
+                continue
             for k in range(i):
                 if j == result[k]:
                     break
@@ -143,9 +145,10 @@ def sample_MN_pair(X, n_MN, option=0):
     for i in numba.prange(n):
         for j in range(n_MN):
             sampled = sample_FP(
-                6,
-                n,
-                reject_ind=np.concatenate([[i], pair_MN[i * n_MN:i * n_MN + j, 1]])
+                n_samples=6,
+                maximum=n,
+                reject_ind=pair_MN[i * n_MN:i * n_MN + j, 1],
+                self_ind=i
             )
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
@@ -170,9 +173,10 @@ def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
             # Shifting the seed to prevent sampling the same pairs
             np.random.seed(random_state + i * n_MN + j)
             sampled = sample_FP(
-                6,
-                n,
-                reject_ind=np.concatenate([[i], pair_MN[i * n_MN:i * n_MN + j, 1]])
+                n_samples=6,
+                maximum=n,
+                reject_ind=pair_MN[i * n_MN:i * n_MN + j, 1],
+                self_ind=i
             )
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
@@ -194,9 +198,10 @@ def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
         FP_index = sample_FP(
-            n_FP,
-            n,
-            np.concatenate([[i], pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1]])
+            n_samples=n_FP,
+            maximum=n,
+            reject_ind=pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1],
+            self_ind=i
         )
         for k in numba.prange(n_FP):
             pair_FP[i*n_FP + k][0] = i
@@ -212,9 +217,10 @@ def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_st
     for i in numba.prange(n):
         np.random.seed(random_state + i)
         FP_index = sample_FP(
-            n_FP,
-            n,
-            np.concatenate([[i], pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1]])
+            n_samples=n_FP,
+            maximum=n,
+            reject_ind=pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1],
+            self_ind=i
         )
         for k in numba.prange(n_FP):
             pair_FP[i*n_FP + k][0] = i
