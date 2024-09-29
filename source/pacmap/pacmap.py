@@ -696,6 +696,7 @@ def pacmap_fit(
 def save(instance, common_prefix: str):
     '''
     Save PaCMAP instance to a location specified by the user.
+
     PaCMAP use ANNOY for graph construction, which cannot be pickled. We provide
     this function as an alternative to save a PaCMAP instance by storing the
     ANNOY instance and other parts of PaCMAP separately.
@@ -705,9 +706,9 @@ def save(instance, common_prefix: str):
         # Save the AnnoyIndex
         instance.tree.save(f"{common_prefix}.ann")
         temp_tree = instance.tree
-        instance.tree = None # Remove the tree for pickle
+        instance.tree = None  # Remove the tree for pickle
         extra_info = f", and the Annoy Index is saved at {common_prefix}.ann"
-    
+
     # Save the other parts
     with open(f"{common_prefix}.pkl", "wb") as fp:
         pkl.dump(instance, fp)
@@ -717,7 +718,7 @@ def save(instance, common_prefix: str):
 
     if instance.save_tree:
         # Reload the AnnoyIndex
-        instance.tree = temp_tree # reload the annoy index
+        instance.tree = temp_tree  # reload the annoy index
         assert instance.tree is not None
 
 
@@ -729,7 +730,7 @@ def load(common_prefix: str):
         instance = pkl.load(fp)
     if os.path.exists(f"{common_prefix}.ann"):
         instance.tree = AnnoyIndex(instance.num_dimensions, instance.distance)
-        instance.tree.load(f"{common_prefix}.ann") # mmap the file
+        instance.tree.load(f"{common_prefix}.ann")  # mmap the file
 
     return instance
 
@@ -838,14 +839,14 @@ class PaCMAP(BaseEstimator):
 
         global _RANDOM_STATE
         if random_state is not None:
-            assert(isinstance(random_state, int))
+            assert (isinstance(random_state, int))
             self.random_state = random_state
             _RANDOM_STATE = random_state  # Set random state for numba functions
-            warnings.warn(f'Warning: random state is set to {_RANDOM_STATE}')
+            warnings.warn(f'Warning: random state is set to {_RANDOM_STATE}.')
         else:
             try:
                 if _RANDOM_STATE is not None:
-                    warnings.warn(f'Warning: random state is removed')
+                    warnings.warn('Warning: random state is removed.')
             except NameError:
                 pass
             self.random_state = 0
@@ -884,7 +885,7 @@ class PaCMAP(BaseEstimator):
         Parameters
         ---------
         X: numpy.ndarray
-            The high-dimensional dataset that is being projected. 
+            The high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
 
         init: str, optional
@@ -955,7 +956,7 @@ class PaCMAP(BaseEstimator):
         Parameters
         ---------
         X: numpy.ndarray
-            The high-dimensional dataset that is being projected. 
+            The high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
 
         init: str, optional
@@ -975,13 +976,13 @@ class PaCMAP(BaseEstimator):
 
     def transform(self, X, basis=None, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into existing embedding space and return the embedding.
-        Warning: In the current version of implementation, the `transform` method will treat the input as an 
+        Warning: In the current version of implementation, the `transform` method will treat the input as an
         additional dataset, which means the same point could be mapped into a different place.
 
         Parameters
         ---------
         X: numpy.ndarray
-            The new high-dimensional dataset that is being projected. 
+            The new high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
 
         basis: numpy.ndarray
@@ -991,9 +992,10 @@ class PaCMAP(BaseEstimator):
 
         init: str, optional
             One of ['pca', 'random']. Initialization of the embedding, default='pca'.
-            If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset. 
-            The PCA instance will be the same one that was applied to the original dataset during the `fit` or `fit_transform` process. 
-            If 'random', then the low dimensional embedding is initialized with a Gaussian distribution.
+            If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset.
+            The PCA instance will be the same one that was applied to the original dataset during
+            the `fit` or `fit_transform` process. If 'random', then the low dimensional embedding
+            is initialized with a Multivariate Gaussian distribution.
 
         save_pairs: bool, optional
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.

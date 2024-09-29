@@ -1,11 +1,13 @@
 import matplotlib.pyplot as plt
 
+
 def generate_figure(embedding, labels, title):
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
     ax.axis('off')
     ax.set_title(title)
     plt.savefig(f"./test_output/{title}.png")
+
 
 def generate_combined_figure(embeddings, labels, titles, theme_title):
     len_subfigs = len(embeddings)
