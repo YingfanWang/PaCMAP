@@ -4,8 +4,7 @@ A script that tests the transform feature of pacmap
 
 import pacmap
 import numpy as np
-from sklearn.model_selection import StratifiedKFold
-from test_utils import *
+from test_utils import generate_combined_figure
 from sklearn import datasets
 
 

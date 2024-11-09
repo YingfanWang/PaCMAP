@@ -1,3 +1,4 @@
+import sklearn
 import pacmap
 import numpy as np
 import matplotlib.pyplot as plt
