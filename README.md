@@ -12,6 +12,7 @@
   - [Usage](#usage)
     - [Using PaCMAP in Python](#using-pacmap-in-python)
     - [Using PaCMAP in R](#using-pacmap-in-r)
+    - [Using PaCMAP in Rust](#using-pacmap-in-rust)
   - [Benchmarks](#benchmarks)
   - [Parameters](#parameters)
   - [Methods](#methods)
@@ -110,7 +111,15 @@ ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6
 
 You can also use PaCMAP in R with the [reticulate package](https://rstudio.github.io/reticulate/).
 We provide a sample [R notebook](./demo/pacmap_Rnotebook_example.Rmd) that demonstrates
-how PaCMAP can be called in R for visualization.
+how PaCMAP can be called in R for visualization. We also provide a [Seurat Intergation](https://github.com/williamsyy/gdc-frontend-framework) that allows seamless integration with
+[Seurat](https://github.com/satijalab/seurat) Objects for single cell genomics.
+
+### <a name='UsingPaCMAPinRust'></a>Using PaCMAP in Rust
+
+A [Rust implementation](https://github.com/beamform/pacmap-rs.git) of PaCMAP has
+recently be released by @hadronzoo. This implementation is Python free, meaning that
+it does not depend on a Python runtime or Python environment. Currently, it only
+supports small dataset (< 10000 samples).
 
 ## <a name='Benchmarks'></a>Benchmarks
 
