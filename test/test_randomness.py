@@ -1,3 +1,4 @@
+import sklearn
 import pacmap
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,9 +11,9 @@ if __name__ == "__main__":
     print(pacmap.PaCMAP())
     np.random.seed(0)
     sample_data = np.random.normal(size=(2000, 4000))
-    instance1 = pacmap.PaCMAP(n_components = 2, n_neighbors = 10, lr = 1, random_state = 20, apply_pca = True)
+    instance1 = pacmap.PaCMAP(n_components=2, n_neighbors=10, lr=1, random_state=20, apply_pca=True)
     instance1_out = instance1.fit_transform(sample_data, init="pca")
-    instance2 = pacmap.PaCMAP(n_components = 2, n_neighbors = 10, lr = 1, random_state = 20, apply_pca = True)
+    instance2 = pacmap.PaCMAP(n_components=2, n_neighbors=10, lr=1, random_state=20, apply_pca=True)
     instance2_out = instance2.fit_transform(sample_data)
     print('Experiment finished successfully.')
 

@@ -1,11 +1,11 @@
 '''
 A general test script that ensures PaCMAP can be successfully loaded.
 '''
-
+import sklearn
 import pacmap
 import numpy as np
 import matplotlib.pyplot as plt
-from test_utils import *
+import test_utils
 
 
 if __name__ == "__main__":
@@ -79,11 +79,11 @@ if __name__ == "__main__":
     labels = np.load("/Users/hyhuang/Desktop/MNIST/fmnist_labels.npy", allow_pickle=True)
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20)
     embedding = reducer.fit_transform(fmnist, init="pca")
-    generate_figure(embedding, labels, 'test_fmnist_seed')
+    test_utils.generate_figure(embedding, labels, 'test_fmnist_seed')
 
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)
     embedding = reducer.fit_transform(fmnist, init="pca")
-    generate_figure(embedding, labels, 'test_fmnist_noseed')
+    test_utils.generate_figure(embedding, labels, 'test_fmnist_noseed')
 
     # MNIST
     mnist = np.load("/Users/hyhuang/Desktop/MNIST/mnist_images.npy", allow_pickle=True)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     labels = np.load("/Users/hyhuang/Desktop/MNIST/mnist_labels.npy", allow_pickle=True)
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20)
     embedding = reducer.fit_transform(mnist, init="pca")
-    generate_figure(embedding, labels, 'test_mnist_seed')
+    test_utils.generate_figure(embedding, labels, 'test_mnist_seed')
 
     plt.savefig("./test_output/test_mnist_seed.png")
 

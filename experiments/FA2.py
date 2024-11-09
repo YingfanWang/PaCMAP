@@ -1,3 +1,5 @@
+# pylint: skip-file
+# flake8: noqa
 import os
 import json
 import numpy as np
@@ -7,6 +9,7 @@ from run_script import data_prep
 from fa2 import ForceAtlas2 as FA2
 from sklearn.preprocessing import scale
 from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
 
 def transform_by_FA2(X, n_neighbors=6):
     if X.shape[1] > 100:

@@ -9,7 +9,7 @@ embedding space.
 import pacmap
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
-from demo_utils import *
+import demo_utils
 
 
 # MNIST
@@ -25,7 +25,7 @@ for n in n_splits:
         X_train, X_test = mnist[train_index], mnist[test_index]
         y_train, y_test = labels[train_index], labels[test_index]
         break
-    
+
     # Initialize the instance
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20, save_tree=False)
 
@@ -41,4 +41,4 @@ for n in n_splits:
     embeddings = [embedding, embedding_test, embedding_combined]
     labelset = [y_train, y_test, y]
     titles = ['Training', 'Test', 'Combined']
-    generate_combined_figure(embeddings, labelset, titles, f'mnist_transform_{n}')
+    demo_utils.generate_combined_figure(embeddings, labelset, titles, f'mnist_transform_{n}')

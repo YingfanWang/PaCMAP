@@ -87,21 +87,25 @@ def calculate_dist(x1, x2, distance_index):
         return hamming_dist(x1, x2)
 
 
-@numba.njit("i4[:](i4,i4,i4[:])", nogil=True, cache=True)
-def sample_FP(n_samples, maximum, reject_ind):
+@numba.njit("i4[:](i4,i4,i4[:],i4)", nogil=True, cache=True)
+def sample_FP(n_samples, maximum, reject_ind, self_ind):
+    """Sample `n_samples` samples from `maximum` points, excluding the `reject_ind` points."""
     result = np.empty(n_samples, dtype=np.int32)
     for i in range(n_samples):
         reject_sample = True
         while reject_sample:
             j = np.random.randint(maximum)
+            if j == self_ind:
+                continue
             for k in range(i):
                 if j == result[k]:
                     break
-            for k in range(reject_ind.shape[0]):
-                if j == reject_ind[k]:
-                    break
             else:
-                reject_sample = False
+                for k in range(reject_ind.shape[0]):
+                    if j == reject_ind[k]:
+                        break
+                else:
+                    reject_sample = False
         result[i] = j
     return result
 
@@ -109,7 +113,7 @@ def sample_FP(n_samples, maximum, reject_ind):
 @numba.njit("i4[:,:](f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True, cache=True)
 def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
     n = X.shape[0]
-    pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
+    pair_neighbors = np.empty((n * n_neighbors, 2), dtype=np.int32)
 
     for i in numba.prange(n):
         scaled_sort = np.argsort(scaled_dist[i])
@@ -123,7 +127,7 @@ def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
 def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
     '''Sample Nearest Neighbor pairs for additional data.'''
     n = X.shape[0]
-    pair_neighbors = np.empty((n*n_neighbors, 2), dtype=np.int32)
+    pair_neighbors = np.empty((n * n_neighbors, 2), dtype=np.int32)
 
     for i in numba.prange(n):
         scaled_sort = np.argsort(scaled_dist[i])
@@ -137,10 +141,15 @@ def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
 def sample_MN_pair(X, n_MN, option=0):
     '''Sample Mid Near pairs.'''
     n = X.shape[0]
-    pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
+    pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
-        for jj in range(n_MN):
-            sampled = np.random.randint(0, n, 6)
+        for j in range(n_MN):
+            sampled = sample_FP(
+                n_samples=6,
+                maximum=n,
+                reject_ind=pair_MN[i * n_MN:i * n_MN + j, 1],
+                self_ind=i
+            )
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
                 dist_list[t] = calculate_dist(
@@ -149,8 +158,8 @@ def sample_MN_pair(X, n_MN, option=0):
             dist_list = np.delete(dist_list, [min_dic])
             sampled = np.delete(sampled, [min_dic])
             picked = sampled[np.argmin(dist_list)]
-            pair_MN[i*n_MN + jj][0] = i
-            pair_MN[i*n_MN + jj][1] = picked
+            pair_MN[i * n_MN + j][0] = i
+            pair_MN[i * n_MN + j][1] = picked
     return pair_MN
 
 
@@ -158,12 +167,17 @@ def sample_MN_pair(X, n_MN, option=0):
 def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
     '''Sample Mid Near pairs using the given random state.'''
     n = X.shape[0]
-    pair_MN = np.empty((n*n_MN, 2), dtype=np.int32)
+    pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
     for i in numba.prange(n):
-        for jj in range(n_MN):
+        for j in range(n_MN):
             # Shifting the seed to prevent sampling the same pairs
-            np.random.seed(random_state + i * n_MN + jj)
-            sampled = np.random.randint(0, n, 6)
+            np.random.seed(random_state + i * n_MN + j)
+            sampled = sample_FP(
+                n_samples=6,
+                maximum=n,
+                reject_ind=pair_MN[i * n_MN:i * n_MN + j, 1],
+                self_ind=i
+            )
             dist_list = np.empty((6), dtype=np.float32)
             for t in range(sampled.shape[0]):
                 dist_list[t] = calculate_dist(
@@ -172,8 +186,8 @@ def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
             dist_list = np.delete(dist_list, [min_dic])
             sampled = np.delete(sampled, [min_dic])
             picked = sampled[np.argmin(dist_list)]
-            pair_MN[i*n_MN + jj][0] = i
-            pair_MN[i*n_MN + jj][1] = picked
+            pair_MN[i * n_MN + j][0] = i
+            pair_MN[i * n_MN + j][1] = picked
     return pair_MN
 
 
@@ -183,9 +197,13 @@ def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
+        FP_index = sample_FP(
+            n_samples=n_FP,
+            maximum=n,
+            reject_ind=pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1],
+            self_ind=i
+        )
         for k in numba.prange(n_FP):
-            FP_index = sample_FP(
-                n_FP, n, pair_neighbors[i*n_neighbors: i*n_neighbors + n_neighbors][1])
             pair_FP[i*n_FP + k][0] = i
             pair_FP[i*n_FP + k][1] = FP_index[k]
     return pair_FP
@@ -197,10 +215,14 @@ def sample_FP_pair_deterministic(X, pair_neighbors, n_neighbors, n_FP, random_st
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
+        np.random.seed(random_state + i)
+        FP_index = sample_FP(
+            n_samples=n_FP,
+            maximum=n,
+            reject_ind=pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1],
+            self_ind=i
+        )
         for k in numba.prange(n_FP):
-            np.random.seed(random_state+i*n_FP+k)
-            FP_index = sample_FP(
-                n_FP, n, pair_neighbors[i*n_neighbors: i*n_neighbors + n_neighbors][1])
             pair_FP[i*n_FP + k][0] = i
             pair_FP[i*n_FP + k][1] = FP_index[k]
     return pair_FP
@@ -222,7 +244,7 @@ def scale_dist(knn_distance, sig, nbrs):
 def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
     '''Update the embedding with the gradient'''
     n, dim = Y.shape
-    lr_t = lr * math.sqrt(1.0 - beta2**(itr+1)) / (1.0 - beta1**(itr+1))
+    lr_t = lr * math.sqrt(1.0 - beta2 ** (itr + 1)) / (1.0 - beta1 ** (itr + 1))
     for i in numba.prange(n):
         for d in numba.prange(dim):
             m[i][d] += (1 - beta1) * (grad[i][d] - m[i][d])
@@ -234,7 +256,7 @@ def update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr):
 def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
     '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
     n, dim = Y.shape
-    grad = np.zeros((n+1, dim), dtype=np.float32)
+    grad = np.zeros((n + 1, dim), dtype=np.float32)
     y_ij = np.empty(dim, dtype=np.float32)
     loss = np.zeros(4, dtype=np.float32)
     # NN
@@ -245,8 +267,8 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             y_ij[d] = Y[i, d] - Y[j, d]
             d_ij += y_ij[d] ** 2
-        loss[0] += w_neighbors * (d_ij/(10. + d_ij))
-        w1 = w_neighbors * (20./(10. + d_ij) ** 2)
+        loss[0] += w_neighbors * (d_ij / (10. + d_ij))
+        w1 = w_neighbors * (20. / (10. + d_ij) ** 2)
         for d in range(dim):
             grad[i, d] += w1 * y_ij[d]
             grad[j, d] -= w1 * y_ij[d]
@@ -258,8 +280,8 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             y_ij[d] = Y[i][d] - Y[j][d]
             d_ij += y_ij[d] ** 2
-        loss[1] += w_MN * d_ij/(10000. + d_ij)
-        w = w_MN * 20000./(10000. + d_ij) ** 2
+        loss[1] += w_MN * d_ij / (10000. + d_ij)
+        w = w_MN * 20000. / (10000. + d_ij) ** 2
         for d in range(dim):
             grad[i, d] += w * y_ij[d]
             grad[j, d] -= w * y_ij[d]
@@ -271,8 +293,8 @@ def pacmap_grad(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP):
         for d in range(dim):
             y_ij[d] = Y[i, d] - Y[j, d]
             d_ij += y_ij[d] ** 2
-        loss[2] += w_FP * 1./(1. + d_ij)
-        w1 = w_FP * 2./(1. + d_ij) ** 2
+        loss[2] += w_FP * 1. / (1. + d_ij)
+        w1 = w_FP * 2. / (1. + d_ij) ** 2
         for d in range(dim):
             grad[i, d] -= w1 * y_ij[d]
             grad[j, d] += w1 * y_ij[d]
@@ -674,6 +696,7 @@ def pacmap_fit(
 def save(instance, common_prefix: str):
     '''
     Save PaCMAP instance to a location specified by the user.
+
     PaCMAP use ANNOY for graph construction, which cannot be pickled. We provide
     this function as an alternative to save a PaCMAP instance by storing the
     ANNOY instance and other parts of PaCMAP separately.
@@ -683,9 +706,9 @@ def save(instance, common_prefix: str):
         # Save the AnnoyIndex
         instance.tree.save(f"{common_prefix}.ann")
         temp_tree = instance.tree
-        instance.tree = None # Remove the tree for pickle
+        instance.tree = None  # Remove the tree for pickle
         extra_info = f", and the Annoy Index is saved at {common_prefix}.ann"
-    
+
     # Save the other parts
     with open(f"{common_prefix}.pkl", "wb") as fp:
         pkl.dump(instance, fp)
@@ -695,7 +718,7 @@ def save(instance, common_prefix: str):
 
     if instance.save_tree:
         # Reload the AnnoyIndex
-        instance.tree = temp_tree # reload the annoy index
+        instance.tree = temp_tree  # reload the annoy index
         assert instance.tree is not None
 
 
@@ -707,7 +730,7 @@ def load(common_prefix: str):
         instance = pkl.load(fp)
     if os.path.exists(f"{common_prefix}.ann"):
         instance.tree = AnnoyIndex(instance.num_dimensions, instance.distance)
-        instance.tree.load(f"{common_prefix}.ann") # mmap the file
+        instance.tree.load(f"{common_prefix}.ann")  # mmap the file
 
     return instance
 
@@ -816,14 +839,14 @@ class PaCMAP(BaseEstimator):
 
         global _RANDOM_STATE
         if random_state is not None:
-            assert(isinstance(random_state, int))
+            assert (isinstance(random_state, int))
             self.random_state = random_state
             _RANDOM_STATE = random_state  # Set random state for numba functions
-            warnings.warn(f'Warning: random state is set to {_RANDOM_STATE}')
+            warnings.warn(f'Warning: random state is set to {_RANDOM_STATE}.')
         else:
             try:
                 if _RANDOM_STATE is not None:
-                    warnings.warn(f'Warning: random state is removed')
+                    warnings.warn('Warning: random state is removed.')
             except NameError:
                 pass
             self.random_state = 0
@@ -862,7 +885,7 @@ class PaCMAP(BaseEstimator):
         Parameters
         ---------
         X: numpy.ndarray
-            The high-dimensional dataset that is being projected. 
+            The high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
 
         init: str, optional
@@ -933,7 +956,7 @@ class PaCMAP(BaseEstimator):
         Parameters
         ---------
         X: numpy.ndarray
-            The high-dimensional dataset that is being projected. 
+            The high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
 
         init: str, optional
@@ -953,13 +976,13 @@ class PaCMAP(BaseEstimator):
 
     def transform(self, X, basis=None, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into existing embedding space and return the embedding.
-        Warning: In the current version of implementation, the `transform` method will treat the input as an 
+        Warning: In the current version of implementation, the `transform` method will treat the input as an
         additional dataset, which means the same point could be mapped into a different place.
 
         Parameters
         ---------
         X: numpy.ndarray
-            The new high-dimensional dataset that is being projected. 
+            The new high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
 
         basis: numpy.ndarray
@@ -969,9 +992,10 @@ class PaCMAP(BaseEstimator):
 
         init: str, optional
             One of ['pca', 'random']. Initialization of the embedding, default='pca'.
-            If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset. 
-            The PCA instance will be the same one that was applied to the original dataset during the `fit` or `fit_transform` process. 
-            If 'random', then the low dimensional embedding is initialized with a Gaussian distribution.
+            If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset.
+            The PCA instance will be the same one that was applied to the original dataset during
+            the `fit` or `fit_transform` process. If 'random', then the low dimensional embedding
+            is initialized with a Multivariate Gaussian distribution.
 
         save_pairs: bool, optional
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.

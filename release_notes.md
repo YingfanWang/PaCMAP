@@ -1,5 +1,9 @@
 # Release Notes
 
+- 0.7.4
+  Fix the problem that `sample_FP_pair` and `sample_FP_pair_deterministic` may create
+  FP pairs on NN.
+
 - 0.7.3
 
   Fix the problem when the sample size is smaller than the number of neighbors,

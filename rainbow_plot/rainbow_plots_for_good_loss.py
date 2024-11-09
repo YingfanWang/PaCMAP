@@ -1,9 +1,8 @@
+# pylint: skip-file
+# flake8: noqa
 import matplotlib.pyplot as plt
 import numpy as np
-import umap
 from scipy import integrate
-from pacmap import PaCMAP
-from experiments.run_experiments import data_prep
 
 
 cmap_fig = plt.cm.get_cmap("Spectral")
@@ -20,12 +19,15 @@ def ladder_map(grids, ladder_range):
     l_map /= len(ladder_range)
     return l_map
 
+
 # parameter "a" and "b" use default values as below
 def attr(x):
     return -pow(x, 0.79)/(1 + pow(x, 2))
 
+
 def repul(x):
     return 0.895 * x/(1 + pow(x, 2))/(0.001 + pow(x, 2))
+
 
 def integ_attr(b):
     res = np.zeros(b.shape)
@@ -33,11 +35,13 @@ def integ_attr(b):
         res[0][i] = integrate.quad(attr, 0, b[0][i], points=[0])[0]
     return res
 
+
 def integ_repul(b):
     res = np.zeros(b.shape)
     for i in range(b.shape[0]):
         res[i][0] = integrate.quad(repul, 0, b[i][0], points=[0])[0]
     return res
+
 
 # For t-SNE we choose a neighbor and further point to visualize forces on them (using COIL20 dataset, 300 iterations)
 def t_attr(x):
@@ -46,11 +50,13 @@ def t_attr(x):
     force = - (8.58 * 1e-5 - qij) * x / (1.0 + x ** 2)
     return force
 
+
 def t_repul(x):
     qij = 1.0 / (x ** 2 + 1.0) / 11500
     qij = np.maximum(qij, 1e-12)
     force = - 10 * (1.19 * 1e-8 - qij) * x / (1.0 + x ** 2)
     return force
+
 
 def t_integ_attr(b):
     res = np.zeros(b.shape[0])
@@ -58,17 +64,20 @@ def t_integ_attr(b):
         res[i] = integrate.quad(t_attr, 0, b[i], points=[0])[0]
     return res
 
+
 def t_integ_repul(b):
     res = np.zeros(b.shape[0])
     for i in range(b.shape[0]):
         res[i] = integrate.quad(t_repul, 0, b[i], points=[0])[0]
     return res
 
+
 def t_integ_attr_(b):
     res = np.zeros(b.shape)
     for i in range(b.shape[1]):
         res[0][i] = integrate.quad(t_attr, 0, b[0][i], points=[0])[0]
     return res
+
 
 def t_integ_repul_(b):
     res = np.zeros(b.shape)
@@ -78,8 +87,6 @@ def t_integ_repul_(b):
 
 
 plt.figure(figsize=(28, 15))
-
-
 
 plt.axes([0.047, 0.52, 0.2, 0.44])
 x = np.linspace(0.0001, 100, num=7000)# d_ij
@@ -115,8 +122,6 @@ plt.yticks(fontsize=23)
 plt.xlabel(r'$d_{ij}$', fontsize=38)
 plt.ylabel(r'$d_{ik}$', fontsize=38)
 
-
-
 plt.axes([0.293, 0.52, 0.2, 0.44])
 x = np.linspace(0.0001, 25, num=7000) # d_ij
 y = np.linspace(0.0001, 25, num=7000) # d_ik
@@ -149,7 +154,6 @@ plt.xticks(fontsize=23)
 plt.yticks(fontsize=23)
 plt.xlabel(r'$d_{ij}$', fontsize=38)
 plt.ylabel(r'$d_{ik}$', fontsize=38)
-
 
 plt.axes([0.543, 0.52, 0.2, 0.44])
 x = np.linspace(0.0001, 200, num=7000) # d_ij
@@ -184,7 +188,6 @@ plt.yticks([50, 100, 150, 200], fontsize=23)
 plt.xlabel(r'$d_{ij}$', fontsize=38)
 plt.ylabel(r'$d_{ik}$', fontsize=38)
 
-
 plt.axes([0.795, 0.52, 0.2, 0.44])
 x = np.linspace(0.0001, 50, num=7000) # d_ij
 y = np.linspace(0.0001, 50, num=7000) # d_ik
@@ -217,6 +220,5 @@ plt.xticks(fontsize=23)
 plt.yticks(fontsize=23)
 plt.xlabel(r'$d_{ij}$', fontsize=38)
 plt.ylabel(r'$d_{ik}$', fontsize=38)
-
 
 plt.savefig('rainbow_good_loss')
