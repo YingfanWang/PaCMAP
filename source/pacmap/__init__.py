@@ -1,5 +1,10 @@
 from .pacmap import PaCMAP, sample_neighbors_pair
 
-import pkg_resources
-__version__ = pkg_resources.get_distribution('pacmap').version
-__all__ = ["pacmap"]
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version('pacmap')
+except PackageNotFoundError:
+    __version__ = "unknown"
+
+__all__ = ["PaCMAP", "sample_neighbors_pair"]
