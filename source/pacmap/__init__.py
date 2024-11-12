@@ -7,4 +7,4 @@ try:
 except PackageNotFoundError:
     __version__ = "unknown"
 
-__all__ = ["pacmap"]
+__all__ = ["PaCMAP", "sample_neighbors_pair"]
