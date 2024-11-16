@@ -118,8 +118,7 @@ how PaCMAP can be called in R for visualization. We also provide a [Seurat Inter
 
 A [Rust implementation](https://github.com/beamform/pacmap-rs.git) of PaCMAP has
 recently be released by @hadronzoo. This implementation is Python free, meaning that
-it does not depend on a Python runtime or Python environment. Currently, it only
-supports small dataset (< 10000 samples).
+it does not depend on a Python runtime or Python environment.
 
 ## <a name='Benchmarks'></a>Benchmarks
 
