@@ -1,9 +1,10 @@
-import numba
-import time
-import math
 import datetime
-import warnings
+import logging
+import math
 import os
+import time
+
+import numba
 
 import numpy as np
 import pickle as pkl
@@ -15,6 +16,8 @@ from annoy import AnnoyIndex
 
 global _RANDOM_STATE
 _RANDOM_STATE = None
+
+logger = logging.getLogger(__name__)
 
 
 @numba.njit("f4(f4[:])", cache=True)
@@ -440,6 +443,9 @@ def generate_extra_pair_basis(basis,
     else:
         n = tree.get_n_items()
 
+    if n - 1 < n_neighbors:
+        logger.warning("Sample size is smaller than n_neighbors. "
+                        "n_neighbors will be reduced.")
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
     n_neighbors = min(n_neighbors, n - 1)
     nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
@@ -468,8 +474,19 @@ def generate_pair(
     '''
     n, dim = X.shape
     # sample more neighbors than needed
+    if n - 1 < n_neighbors:
+        logger.warning("Sample size is smaller than number of neighbor pairs"
+                        " requested. n_neighbors will be reduced.")
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
     n_neighbors = min(n_neighbors, n - 1)
+    if n - 1 < n_FP:
+        logger.warning("Sample size is smaller than number of further pairs"
+                        " requested. n_FP will be reduced.")
+    n_FP = min(n_FP, n - 1)
+    if n - 1 < n_MN:
+        logger.warning("Sample size is smaller than number of mid-near pairs"
+                        " requested. n_MN will be reduced.")
+    n_MN = min(n_MN, n - 1)
     tree = AnnoyIndex(dim, metric=distance)
     if _RANDOM_STATE is not None:
         tree.set_seed(_RANDOM_STATE)
@@ -842,11 +859,11 @@ class PaCMAP(BaseEstimator):
             assert (isinstance(random_state, int))
             self.random_state = random_state
             _RANDOM_STATE = random_state  # Set random state for numba functions
-            warnings.warn(f'Warning: random state is set to {_RANDOM_STATE}.')
+            logger.warning(f'Warning: random state is set to {_RANDOM_STATE}.')
         else:
             try:
                 if _RANDOM_STATE is not None:
-                    warnings.warn('Warning: random state is removed.')
+                    logger.warning('Warning: random state is removed.')
             except NameError:
                 pass
             self.random_state = 0
@@ -858,10 +875,10 @@ class PaCMAP(BaseEstimator):
         if self.lr <= 0:
             raise ValueError("The learning rate must be larger than 0.")
         if self.distance == "hamming" and apply_pca:
-            warnings.warn(
+            logger.warning(
                 "apply_pca = True for Hamming distance. This option will be ignored.")
         if not self.apply_pca:
-            warnings.warn(
+            logger.warning(
                 "Running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
 
     def decide_num_pairs(self, n):
@@ -872,6 +889,20 @@ class PaCMAP(BaseEstimator):
                 self.n_neighbors = int(round(10 + 15 * (np.log10(n) - 4)))
         self.n_MN = int(round(self.n_neighbors * self.MN_ratio))
         self.n_FP = int(round(self.n_neighbors * self.FP_ratio))
+
+        if n - 1 < self.n_neighbors:
+            logger.warning("Sample size is smaller than number of neighbor pairs"
+                            " requested. n_neighbors will be reduced.")
+        self.n_neighbors = min(self.n_neighbors, n - 1)
+        if n - 1 < self.n_FP:
+            logger.warning("Sample size cannot accommodate number of further pairs"
+                            " requested. n_FP will be reduced.")
+        self.n_FP = min(self.n_FP, n - 1 - self.n_neighbors)
+        if n - 1 < self.n_MN:
+            logger.warning("Sample size is smaller than number of mid-near pairs"
+                            " requested. n_MN will be reduced.")
+        self.n_MN = min(self.n_MN, n - 1)
+
         if self.n_neighbors < 1:
             raise ValueError(
                 "The number of nearest neighbors can't be less than 1")
@@ -908,8 +939,6 @@ class PaCMAP(BaseEstimator):
         self.pca_solution = pca_solution
         # Deciding the number of pairs
         self.decide_num_pairs(n)
-        if n - 1 < self.n_neighbors:
-            warnings.warn("Sample size is smaller than n_neighbors. n_neighbors will be reduced.")
         print_verbose(
             "PaCMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={}, "
             "lr={}, n_iters={}, apply_pca={}, opt_method='adam', "
