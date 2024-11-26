@@ -874,7 +874,7 @@ class PaCMAP(BaseEstimator):
                 "The number of projection dimensions must be at least 1."
             )
         if self.n_components != 2:
-            logger.debug("Note: `n_components != 2` have not been thoroughly tested.")
+            logger.warning("Note: `n_components != 2` have not been thoroughly tested.")
         if self.lr <= 0:
             raise ValueError("The learning rate must be larger than 0.")
         if self.distance == "hamming" and apply_pca:
