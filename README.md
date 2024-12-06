@@ -1,31 +1,15 @@
 # PaCMAP
 
-## Table of Contents
-<!-- vscode-markdown-toc -->
-- [PaCMAP](#pacmap)
-  - [Table of Contents](#table-of-contents)
-  - [Introduction](#introduction)
-  - [Release Notes](#release-notes)
-  - [Installation](#installation)
-    - [Install from conda-forge via conda or mamba](#install-from-conda-forge-via-conda-or-mamba)
-    - [Install from PyPI via pip](#install-from-pypi-via-pip)
-  - [Usage](#usage)
-    - [Using PaCMAP in Python](#using-pacmap-in-python)
-    - [Using PaCMAP in R](#using-pacmap-in-r)
-    - [Using PaCMAP in Rust](#using-pacmap-in-rust)
-  - [Benchmarks](#benchmarks)
-  - [Parameters](#parameters)
-  - [Methods](#methods)
-  - [How to use user-specified nearest neighbor](#how-to-use-user-specified-nearest-neighbor)
-  - [Reproducing our experiments](#reproducing-our-experiments)
-  - [Citation](#citation)
-  - [License](#license)
+## <a name='News'></a>News
 
-<!-- vscode-markdown-toc-config
-	numbering=false
-	autoSave=true
-	/vscode-markdown-toc-config -->
-<!-- /vscode-markdown-toc -->
+### NeurIPS 2024: New Parametric DR method ParamRepulsor accepted
+
+We're excited to announce that our latest work has been published at the Thirty-Eighth Conference on Neural Information Processing Systems (**NeurIPS 2024**)!🎉🎉
+
+Traditional dimensionality reduction (DR) algorithms struggle with online-learning scenarios, while existing parametric DR approaches often fail to preserve local structure in visualizations.
+Our latest algorithm, *ParamRepulsor*, builds on Parametric PaCMAP to address these challenges, achieving state-of-the-art performance in both local and global structure preservation. With GPU support using PyTorch, ParamRepulsor delivers exceptional speed and scalability, making it suitable for large-scale and dynamic datasets.
+
+Check out the [NeurIPS paper](https://openreview.net/pdf?id=eYNYnYle41) and the [code](https://github.com/hyhuang00/ParamRepulsor) for detailed insights into the new approach.
 
 ## <a name='Introduction'></a>Introduction
 
