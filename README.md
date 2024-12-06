@@ -142,7 +142,7 @@ The list of the most important parameters is given below. Changing these values 
 
 The initialization is also important to the result, but it's a parameter of the `fit` and `fit_transform` function.
 
-- `init`: the initialization of the lower dimensional embedding. One of `"pca"` or `"random"`, or a user-provided numpy ndarray with the shape (N, 2). Default to `"random"`.
+- `init`: the initialization of the lower dimensional embedding. One of `"pca"` or `"random"`, or a user-provided numpy ndarray with the shape (N, 2). Default to `"pca"`.
 
 Other parameters include:
 
