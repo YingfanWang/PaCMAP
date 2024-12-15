@@ -1135,7 +1135,7 @@ def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres
 
 @numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4, f4[:,:], f4)", parallel=True, nogil=True, cache=True)
 def sample_FP_pair_nearby(X, pair_neighbors, n_neighbors, n_FP, Y, low_dist_thres):
-    '''Resample Further pairs based on local distances'''
+    '''Resample Further pairs for local graph adjustment'''
     n = X.shape[0]
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
@@ -1154,7 +1154,7 @@ def sample_FP_pair_nearby(X, pair_neighbors, n_neighbors, n_FP, Y, low_dist_thre
 
 @numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4,f4)", parallel=True, nogil=True, cache=True)
 def pacmap_grad_nearby_recip_sqrt(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP, NN_coef_recip):
-    '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
+    '''Calculate the gradient for localmap embedding given the particular set of weights.'''
     n, dim = Y.shape
     grad = np.zeros((n+1, dim), dtype=np.float32)
     y_ij = np.empty(dim, dtype=np.float32)
@@ -1297,12 +1297,76 @@ def localmap(
 
 
 class LocalMAP(PaCMAP):
-    '''LocalMAP: Dimension Reduction with Locally Adjusted Graphs
+    '''LocalMAP: Local Graph Adjustment Manifold Approximation and Projection.
 
-    Maps high-dimensional dataset to a low-dimensional embedding with locally adjusted graphs.
-    This class inherents from the original PaCMAP module by replacing the original LocalMAP embedding 
+    Maps high-dimensional dataset to a low-dimensional embedding with additional local graph adjustment.
+    This class inherits the original PaCMAP Clas, and  it supports the the sklearn api. 
     For details of this method, please refer to our publication:
-    [ADD HERE!!!]
+    [ADD HERE!]
+
+    Parameters
+    ---------
+    n_components: int, default=2
+        Dimensions of the embedded space. We recommend to use 2 or 3.
+
+    n_neighbors: int, default=10
+        Number of neighbors considered for nearest neighbor pairs for local structure preservation.
+
+    MN_ratio: float, default=0.5
+        Ratio of mid near pairs to nearest neighbor pairs (e.g. n_neighbors=10, MN_ratio=0.5 --> 5 Mid near pairs)
+        Mid near pairs are used for global structure preservation.
+
+    FP_ratio: float, default=2.0
+        Ratio of further pairs to nearest neighbor pairs (e.g. n_neighbors=10, FP_ratio=2 --> 20 Further pairs)
+        Further pairs are used for both local and global structure preservation.
+
+    pair_neighbors: numpy.ndarray, optional
+        Nearest neighbor pairs constructed from a previous run or from outside functions.
+
+    pair_MN: numpy.ndarray, optional
+        Mid near pairs constructed from a previous run or from outside functions.
+
+    pair_FP: numpy.ndarray, optional
+        Further pairs constructed from a previous run or from outside functions.
+
+    distance: string, default="euclidean"
+        Distance metric used for high-dimensional space. Allowed metrics include euclidean, manhattan, angular, hamming.
+
+    lr: float, default=1.0
+        Learning rate of the Adam optimizer for embedding.
+
+    num_iters: tuple[int, int, int] or int, default=(100, 100, 250)
+        Tuple with number of iterations for the optimization of embedding for each stage.
+        If a single integer is provided, this parameter will be set to (100, 100, num_iters), following the original
+        implementation.
+
+    verbose: bool, default=False
+        Whether to print additional information during initialization and fitting.
+
+    apply_pca: bool, default=True
+        Whether to apply PCA on the data before pair construction.
+
+    intermediate: bool, default=False
+        Whether to return intermediate state of the embedding during optimization.
+        If True, returns a series of embedding during different stages of optimization.
+
+    intermediate_snapshots: list[int], optional
+        The index of step where an intermediate snapshot of the embedding is taken.
+        If intermediate sets to True, the default value will be [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
+
+    random_state: int, optional
+        Random state for the pacmap instance.
+        Setting random state is useful for repeatability.
+
+    save_tree: bool, default=False
+        Whether to save the annoy index tree after finding the nearest neighbor pairs.
+        Default to False for memory saving. Setting this option to True can make `transform()` method faster.
+    
+    low_dist_thres [NEW FOR LocalMAP]: float, default=10
+        The Proximal Cluster Distance Commons, the acceptance distance threshold for selecting local FP with distance no 
+        larger than the average low-dimension distance among all nearest clusters pair.
+        Default to 10 based on observation.
+        
     '''
     def __init__(self,
                     n_components=2,
@@ -1399,3 +1463,6 @@ class LocalMAP(PaCMAP):
         if not save_pairs:
             self.del_pairs()
         return self
+
+
+                
