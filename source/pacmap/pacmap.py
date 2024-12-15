@@ -1107,3 +1107,295 @@ class PaCMAP(BaseEstimator):
         self.pair_MN = None
         self.pair_FP = None
         return self
+
+@numba.njit("i4[:](i4,i4,i4[:],i4, f4[:,:], f4)", nogil=True, cache=True)
+def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres):
+    """Resample `n_samples` samples from `maximum` points, excluding the `reject_ind` points, 
+    and the low-dimension distance that is more than the `low_dist_thres`."""
+    result = np.empty(n_samples, dtype=np.int32)
+    for i in range(n_samples):
+        reject_sample = True
+        while reject_sample:
+            j = np.random.randint(maximum)
+            if j == self_ind:
+                continue
+            for k in range(i):
+                if j == result[k]:
+                    break
+            else:
+                for k in range(reject_ind.shape[0]):
+                    if j == reject_ind[k]:
+                        break
+                if euclid_dist(Y[self_ind], Y[j]) > low_dist_thres:
+                    continue
+                else:
+                    reject_sample = False
+        result[i] = j
+    return result
+
+@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4, f4[:,:], f4)", parallel=True, nogil=True, cache=True)
+def sample_FP_pair_nearby(X, pair_neighbors, n_neighbors, n_FP, Y, low_dist_thres):
+    '''Resample Further pairs based on local distances'''
+    n = X.shape[0]
+    pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
+    for i in numba.prange(n):
+        FP_index = sample_FP_nearby(
+            n_samples=n_FP,
+            maximum=n,
+            reject_ind=pair_neighbors[i * n_neighbors:(i + 1) * n_neighbors, 1],
+            self_ind=i,
+            Y=Y,
+            low_dist_thres=low_dist_thres
+        )
+        for k in numba.prange(n_FP):
+            pair_FP[i*n_FP + k][0] = i
+            pair_FP[i*n_FP + k][1] = FP_index[k]
+    return pair_FP
+
+@numba.njit("f4[:,:](f4[:,:],i4[:,:],i4[:,:],i4[:,:],f4,f4,f4,f4)", parallel=True, nogil=True, cache=True)
+def pacmap_grad_nearby_recip_sqrt(Y, pair_neighbors, pair_MN, pair_FP, w_neighbors, w_MN, w_FP, NN_coef_recip):
+    '''Calculate the gradient for pacmap embedding given the particular set of weights.'''
+    n, dim = Y.shape
+    grad = np.zeros((n+1, dim), dtype=np.float32)
+    y_ij = np.empty(dim, dtype=np.float32)
+    loss = np.zeros(4, dtype=np.float32)
+    # NN
+    for t in range(pair_neighbors.shape[0]):
+        i = pair_neighbors[t, 0]
+        j = pair_neighbors[t, 1]
+        d_ij = 1.0
+        for d in range(dim):
+            y_ij[d] = Y[i, d] - Y[j, d]
+            d_ij += y_ij[d] ** 2
+        loss[0] += w_neighbors * (d_ij/(10. + d_ij))
+        w1 = w_neighbors * (20./(10. + d_ij) ** 2)
+        w1 *= NN_coef_recip/(np.sqrt(d_ij))
+        for d in range(dim):
+            grad[i, d] += w1 * y_ij[d]
+            grad[j, d] -= w1 * y_ij[d]
+    # MN
+    for tt in range(pair_MN.shape[0]):
+        i = pair_MN[tt, 0]
+        j = pair_MN[tt, 1]
+        d_ij = 1.0
+        for d in range(dim):
+            y_ij[d] = Y[i][d] - Y[j][d]
+            d_ij += y_ij[d] ** 2
+        loss[1] += w_MN * d_ij/(10000. + d_ij)
+        w = w_MN * 20000./(10000. + d_ij) ** 2
+        for d in range(dim):
+            grad[i, d] += w * y_ij[d]
+            grad[j, d] -= w * y_ij[d]
+    # FP
+    for ttt in range(pair_FP.shape[0]):
+        i = pair_FP[ttt, 0]
+        j = pair_FP[ttt, 1]
+        d_ij = 1.0
+        for d in range(dim):
+            y_ij[d] = Y[i, d] - Y[j, d]
+            d_ij += y_ij[d] ** 2
+        loss[2] += w_FP * 1./(1. + d_ij)
+        w1 = w_FP * 2./(1. + d_ij) ** 2
+        for d in range(dim):
+            grad[i, d] -= w1 * y_ij[d]
+            grad[j, d] += w1 * y_ij[d]
+    grad[-1, 0] = loss.sum()
+    return grad
+
+def localmap(
+        X,
+        n_dims,
+        pair_neighbors,
+        pair_MN,
+        pair_FP,
+        lr,
+        num_iters,
+        Yinit,
+        verbose,
+        intermediate,
+        inter_snapshots,
+        pca_solution,
+        low_dist_thres,
+        tsvd=None
+):
+    start_time = time.time()
+    n, _ = X.shape
+
+    n_neighbors = pair_neighbors.shape[0]//n
+    n_FP = pair_FP.shape[0]//n
+
+    if intermediate:
+        intermediate_states = np.empty(
+            (len(inter_snapshots), n, n_dims), dtype=np.float32)
+    else:
+        intermediate_states = None
+
+    # Initialize the embedding
+    if isinstance(Yinit, np.ndarray):
+        Yinit = Yinit.astype(np.float32)
+        scaler = preprocessing.StandardScaler().fit(Yinit)
+        Y = scaler.transform(Yinit) * 0.0001
+    elif Yinit is None or (isinstance(Yinit, str) and Yinit == "pca"):
+        if pca_solution:
+            Y = 0.01 * X[:, :n_dims]
+        else:
+            Y = 0.01 * tsvd.transform(X).astype(np.float32)
+    elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
+        if _RANDOM_STATE is not None:
+            np.random.seed(_RANDOM_STATE)
+        Y = np.random.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
+    else:
+        raise ValueError((f"The argument init is of the type {type(Yinit)}. "
+                          "Currently, PaCMAP only supports user supplied "
+                          "numpy.ndarray object as input, or one of "
+                          "['pca', 'random']."))
+
+    # Initialize parameters for optimizer
+    w_MN_init = 1000.
+    beta1 = 0.9
+    beta2 = 0.999
+    m = np.zeros_like(Y, dtype=np.float32)
+    v = np.zeros_like(Y, dtype=np.float32)
+
+    if intermediate and inter_snapshots[0] == 0:
+        itr_ind = 1  # move counter to one step
+        intermediate_states[0, :, :] = Y
+
+    print_verbose(
+        (pair_neighbors.shape, pair_MN.shape, pair_FP.shape), verbose)
+
+    num_iters_total = sum(num_iters)
+
+    for itr in range(num_iters_total):
+        w_MN, w_neighbors, w_FP = find_weight(w_MN_init, itr, num_iters=num_iters)
+
+        if itr > num_iters[0] + num_iters[1]:
+            grad = pacmap_grad_nearby_recip_sqrt(Y, pair_neighbors, pair_MN,
+                                                    pair_FP, w_neighbors, w_MN, w_FP, low_dist_thres/2)
+        else:
+            grad = pacmap_grad(Y, pair_neighbors, pair_MN,
+                            pair_FP, w_neighbors, w_MN, w_FP)
+        C = grad[-1, 0]
+        if verbose and itr == 0:
+            print(f"Initial Loss: {C}")
+        update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
+
+        if itr > num_iters[0] + num_iters[1]:
+            pair_FP = sample_FP_pair_nearby(X, pair_neighbors, n_neighbors, n_FP, Y, low_dist_thres)
+
+        if intermediate:
+            if (itr + 1) == inter_snapshots[itr_ind]:
+                intermediate_states[itr_ind, :, :] = Y
+                itr_ind += 1
+        if (itr + 1) % 10 == 0:
+            print_verbose("Iteration: %4d, Loss: %f" % (itr + 1, C), verbose)
+
+    elapsed = time.time() - start_time
+    print_verbose(f"Elapsed time: {elapsed:.2f}s", verbose)
+
+    return Y, intermediate_states, pair_neighbors, pair_MN, pair_FP
+
+
+class LocalMAP(PaCMAP):
+    '''LocalMAP: Dimension Reduction with Locally Adjusted Graphs
+
+    Maps high-dimensional dataset to a low-dimensional embedding with locally adjusted graphs.
+    This class inherents from the original PaCMAP module by replacing the original LocalMAP embedding 
+    For details of this method, please refer to our publication:
+    [ADD HERE!!!]
+    '''
+    def __init__(self,
+                    n_components=2,
+                    n_neighbors=10,
+                    MN_ratio=0.5,
+                    FP_ratio=2.0,
+                    pair_neighbors=None,
+                    pair_MN=None,
+                    pair_FP=None,
+                    distance="euclidean",
+                    lr=1.0,
+                    num_iters=(100, 100, 250),
+                    verbose=False,
+                    apply_pca=True,
+                    intermediate=False,
+                    intermediate_snapshots=[
+                        0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
+                    random_state=None,
+                    save_tree=False,
+                    low_dist_thres=10
+                    ):
+            super().__init__(n_components, n_neighbors, MN_ratio, FP_ratio, pair_neighbors, pair_MN, pair_FP,
+                            distance, lr, num_iters, verbose, apply_pca, intermediate, intermediate_snapshots, 
+                            random_state, save_tree)
+            self.low_dist_thres = low_dist_thres
+            
+    def fit(self, X, init=None, save_pairs=True):
+        '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
+
+        Parameters
+        ---------
+        X: numpy.ndarray
+            The high-dimensional dataset that is being projected. 
+            An embedding will get created based on parameters of the PaCMAP instance.
+
+        init: str, optional
+            One of ['pca', 'random']. Initialization of the embedding, default='pca'.
+            If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset.
+            If 'random', then the low dimensional embedding is initialized with a Gaussian distribution.
+
+        save_pairs: bool, optional
+            Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.
+        '''
+
+        X = np.copy(X).astype(np.float32)
+        # Preprocess the dataset
+        n, dim = X.shape
+        if n <= 0:
+            raise ValueError("The sample size must be larger than 0")
+        X, pca_solution, tsvd, self.xmin, self.xmax, self.xmean = preprocess_X(
+            X, self.distance, self.apply_pca, self.verbose, self.random_state, dim, self.n_components)
+        self.tsvd_transformer = tsvd
+        self.pca_solution = pca_solution
+        # Deciding the number of pairs
+        self.decide_num_pairs(n)
+        print_verbose(
+            "LocalMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={}, "
+            "lr={}, n_iters={}, apply_pca={}, opt_method='adam', "
+            "verbose={}, intermediate={}, low_dist_threshold={}, seed={})".format(
+                self.n_neighbors,
+                self.n_MN,
+                self.n_FP,
+                self.distance,
+                self.lr,
+                self.num_iters,
+                self.apply_pca,
+                self.verbose,
+                self.intermediate,
+                self.low_dist_thres,
+                _RANDOM_STATE
+            ), self.verbose
+        )
+        # Sample pairs
+        self.sample_pairs(X, self.save_tree)
+        self.num_instances = X.shape[0]
+        self.num_dimensions = X.shape[1]
+        # Initialize and Optimize the embedding
+        self.embedding_, self.intermediate_states, self.pair_neighbors, self.pair_MN, self.pair_FP = localmap(
+            X,
+            self.n_components,
+            self.pair_neighbors,
+            self.pair_MN,
+            self.pair_FP,
+            self.lr,
+            self.num_iters,
+            init,
+            self.verbose,
+            self.intermediate,
+            self.intermediate_snapshots,
+            pca_solution,
+            self.low_dist_thres,
+            self.tsvd_transformer
+        )
+        if not save_pairs:
+            self.del_pairs()
+        return self
