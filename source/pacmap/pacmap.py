@@ -1280,7 +1280,7 @@ def localmap(
             print(f"Initial Loss: {C}")
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
-        if itr > num_iters[0] + num_iters[1]:
+        if (itr > num_iters[0] + num_iters[1]) and (itr % 10 == 0):
             pair_FP = sample_FP_pair_nearby(X, pair_neighbors, n_neighbors, n_FP, Y, low_dist_thres)
 
         if intermediate:
