@@ -13,7 +13,7 @@ Check out the [NeurIPS paper](https://openreview.net/pdf?id=eYNYnYle41) and the 
 
 ### AAAI 2024: New DR method LocalMAP for Local Adjusted Graph accepted
 
-We're excited to announce that our latest work has been published at the The 39th Annual AAAI Conference on Artificial Intelligence (**AAAI 2024**)!🎉🎉
+We're excited to announce that our latest work has been published at the The 39th Annual AAAI Conference on Artificial Intelligence (**AAAI 2025**)!🎉🎉
 
 General dimension reduction (DR) algorithm often involves converting the original high-dimensional data into a graph. Each edge within the graph represents the similarity or dissimilarity between pairs of data points. However, this graph is frequently suboptimal due to unreliable high-dimensional distances and the limited information extracted from the high-dimensional data.
 
