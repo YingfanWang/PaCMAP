@@ -11,13 +11,23 @@ Our latest algorithm, *ParamRepulsor*, builds on Parametric PaCMAP to address th
 
 Check out the [NeurIPS paper](https://openreview.net/pdf?id=eYNYnYle41) and the [code](https://github.com/hyhuang00/ParamRepulsor) for detailed insights into the new approach.
 
+### AAAI 2024: New DR method LocalMAP for Local Adjusted Graph accepted
+
+We're excited to announce that our latest work has been published at the The 39th Annual AAAI Conference on Artificial Intelligence (**AAAI 2025**)!🎉🎉
+
+General dimension reduction (DR) algorithm often involves converting the original high-dimensional data into a graph. Each edge within the graph represents the similarity or dissimilarity between pairs of data points. However, this graph is frequently suboptimal due to unreliable high-dimensional distances and the limited information extracted from the high-dimensional data.
+
+Our latest algorithm, Pairwise Controlled Manifold Approximation with Local Adjusted Graph(*LocalMAP*), from a nonparametric perspective, address this problem by dynamically and locally adjusting the graph during the final stage, making the real clusters within the dataset to be easier to identify and more separable comparing to other DR methods that may overlook or combine.
+
+Check out our [AAAI Paper]() and the [Code](https://github.com/williamsyy/LocalMAP) for detailed insights into the new approach. This method will be embedded into PaCMAP package soon.
+
 ## <a name='Introduction'></a>Introduction
 
 **Our work has been published at the Journal of Machine Learning Research(JMLR)!**
 
 PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reduction method that can be used for visualization, preserving both local and global structure of the data in original space. PaCMAP optimizes the low dimensional embedding using three kinds of pairs of points: neighbor pairs (pair_neighbors), mid-near pair (pair_MN), and further pairs (pair_FP).
 
-Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving glocal structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [our paper](https://jmlr.org/papers/v22/20-1061.html).
+Previous dimensionality reduction techniques focus on either local structure (e.g. t-SNE, LargeVis and UMAP) or global structure (e.g. TriMAP), but not both, although with carefully tuning the parameter in their algorithms that controls the balance between global and local structure, which mainly adjusts the number of considered neighbors. Instead of considering more neighbors to attract for preserving global structure, PaCMAP dynamically uses a special group of pairs -- mid-near pairs, to first capture global structure and then refine local structure, which both preserve global and local structure. For a thorough background and discussion on this work, please read [our paper](https://jmlr.org/papers/v22/20-1061.html).
 
 ## <a name='ReleaseNotes'></a>Release Notes
 
