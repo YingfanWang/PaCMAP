@@ -11,7 +11,7 @@ Our latest algorithm, *ParamRepulsor*, builds on Parametric PaCMAP to address th
 
 Check out the [NeurIPS paper](https://openreview.net/pdf?id=eYNYnYle41) and the [code](https://github.com/hyhuang00/ParamRepulsor) for detailed insights into the new approach.
 
-### AAAI 2024: New DR method LocalMAP for Local Adjusted Graph accepted
+### AAAI 2025: New DR method LocalMAP for Local Adjusted Graph accepted
 
 We're excited to announce that our latest work has been published at the The 39th Annual AAAI Conference on Artificial Intelligence (**AAAI 2025**)!🎉🎉
 
@@ -19,7 +19,7 @@ General dimension reduction (DR) algorithm often involves converting the origina
 
 Our latest algorithm, Pairwise Controlled Manifold Approximation with Local Adjusted Graph(*LocalMAP*), from a nonparametric perspective, address this problem by dynamically and locally adjusting the graph during the final stage, making the real clusters within the dataset to be easier to identify and more separable comparing to other DR methods that may overlook or combine.
 
-Check out our [AAAI Paper]() and the [Code](https://github.com/williamsyy/LocalMAP) for detailed insights into the new approach. This method will be embedded into PaCMAP package soon.
+Check out our [AAAI Paper (to be released)]() and the [Code](https://github.com/williamsyy/LocalMAP) for detailed insights into the new approach. This method will be embedded into PaCMAP package soon.
 
 ## <a name='Introduction'></a>Introduction
 
