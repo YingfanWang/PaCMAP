@@ -23,7 +23,7 @@ Check out our [AAAI Paper (to be released)]() and the [Code](https://github.com/
 
 ## <a name='Introduction'></a>Introduction
 
-**Our work has been published at the Journal of Machine Learning Research(JMLR)!**
+Our work has been published in the **Journal of Machine Learning Research (JMLR)** 📚 and has earned the prestigious **John M. Chambers Statistical Software Award** 🥇 and the **Award for Innovation in Statistical Programming and Analytics** 💡 presented by the Statistical Computing Section (SCS) and the Statistical Programming and Analytics Section (SSPA) of the American Statistical Association (ASA).
 
 PaCMAP (Pairwise Controlled Manifold Approximation) is a dimensionality reduction method that can be used for visualization, preserving both local and global structure of the data in original space. PaCMAP optimizes the low dimensional embedding using three kinds of pairs of points: neighbor pairs (pair_neighbors), mid-near pair (pair_MN), and further pairs (pair_FP).
 
