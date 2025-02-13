@@ -739,15 +739,40 @@ def save(instance, common_prefix: str):
         assert instance.tree is not None
 
 
-def load(common_prefix: str):
+def attach_index(reducer, index_path: str):
+    reducer.tree = AnnoyIndex(reducer.num_dimensions, reducer.distance)
+    reducer.tree.load(index_path)  # mmap the file
+    return reducer
+
+
+def load(
+        common_prefix: str | None = None,
+        reducer_path: str | None = None,
+        index_path: str | None = None,
+    ):
     '''
     Load PaCMAP instance from a location specified by the user.
+    If the index and reducer are saved with `common_prefix`,
+    this will load both into the returned object.
+
+    Otherwise, pass `index_path` to attach any saved index.
+    `reducer_path` can be used to specify the full path to load.
+
+    Note: only one of `common_prefix` or `reducer_path` is needed.
     '''
-    with open(f"{common_prefix}.pkl", "rb") as fp:
-        instance = pkl.load(fp)
-    if os.path.exists(f"{common_prefix}.ann"):
-        instance.tree = AnnoyIndex(instance.num_dimensions, instance.distance)
-        instance.tree.load(f"{common_prefix}.ann")  # mmap the file
+    if reducer_path is not None:
+        with open(reducer_path, "rb") as fp:
+            instance = pkl.load(fp)
+    else:
+        with open(f"{common_prefix}.pkl", "rb") as fp:
+            instance = pkl.load(fp)
+
+    if index_path is not None:
+        instance = attach_index(instance, index_path)
+    else:  # attempt to load index from common path
+        index_path = f"{common_prefix}.ann"
+        if os.path.exists(index_path):
+            instance = attach_index(instance, index_path)
 
     return instance
 
