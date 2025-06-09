@@ -9,6 +9,7 @@ test:
 		test/test_general.py \
 		test/test_transform_iris.py \
 		test/test_randomness.py \
+		test/test_transform.py \
 		test/test_metric.py
 
 clean:
