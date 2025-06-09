@@ -4,7 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-if __name__ == "__main__":
+def test_pacmap_randomness_deterministic():
+    """Test that PaCMAP produces deterministic results with same random_state."""
     # Initialize
     pacmap.PaCMAP()
     # print
@@ -21,13 +22,13 @@ if __name__ == "__main__":
     print(instance2_out[:3, :3])
 
     try:
-        assert(np.sum(np.abs(instance1_out-instance2_out))<1e-8)
+        assert np.sum(np.abs(instance1_out - instance2_out)) < 1e-8
         print("The output is deterministic.")
     except AssertionError:
         print("The output is not deterministic.")
         try:
-            assert(np.sum(np.abs(instance1.pair_FP.astype(int)-instance2.pair_FP.astype(int)))<1e-8)
-            assert(np.sum(np.abs(instance1.pair_MN.astype(int)-instance2.pair_MN.astype(int)))<1e-8)
+            assert np.sum(np.abs(instance1.pair_FP.astype(int) - instance2.pair_FP.astype(int))) < 1e-8
+            assert np.sum(np.abs(instance1.pair_MN.astype(int) - instance2.pair_MN.astype(int))) < 1e-8
         except AssertionError:
             print('The pairs are not deterministic')
             for i in range(5000):
@@ -44,3 +45,8 @@ if __name__ == "__main__":
                     print(instance1.pair_MN[i])
                     print(instance2.pair_MN[i])
                     break
+
+
+if __name__ == "__main__":
+    # Backward compatibility - can still run as script
+    test_pacmap_randomness_deterministic()
