@@ -1,4 +1,4 @@
 .PHONY: test
 
 test:
-	pytest test/test_transform_iris.py
+	pytest test/test_general.py test/test_transform_iris.py
