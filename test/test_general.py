@@ -3,7 +3,7 @@ A general test script that ensures PaCMAP can be successfully loaded.
 """
 
 import sklearn
-import pacmap
+from pacmap import pacmap
 import numpy as np
 import matplotlib.pyplot as plt
 import test_utils
