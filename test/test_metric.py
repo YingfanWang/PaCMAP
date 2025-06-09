@@ -6,8 +6,11 @@ import pacmap
 import numpy as np
 import matplotlib.pyplot as plt
 from test_utils import *
+from sklearn.datasets import fetch_openml
 
-if __name__ == "__main__":
+
+def test_pacmap_metric_initialization():
+    """Test that PaCMAP can be initialized with different distance metrics."""
     # Try initialize
     pacmap.PaCMAP(distance='manhattan')
     pacmap.PaCMAP(distance='angular')
@@ -15,9 +18,13 @@ if __name__ == "__main__":
     print("Instance initialized successfully.")
     try:
         pacmap.PaCMAP(distance='unknown')
+        assert False, "Should have raised NotImplementedError"
     except NotImplementedError:
         print("Not implemented error raised successfully")
 
+
+def test_pacmap_metric_deterministic():
+    """Test PaCMAP deterministic behavior with different metrics."""
     # Initialize sample data
     sample_data = np.random.normal(size=(10000, 10))
     b = pacmap.PaCMAP(random_state=10, distance='manhattan')
@@ -56,10 +63,18 @@ if __name__ == "__main__":
                     print(c.pair_MN[i])
                     break
 
-    # FMNIST
-    fmnist = np.load("/Users/hyhuang/Desktop/MNIST/fmnist_images.npy", allow_pickle=True)
+
+def test_pacmap_fashion_mnist_manhattan():
+    """Test PaCMAP with Fashion-MNIST using Manhattan distance."""
+    # Load Fashion-MNIST from OpenML
+    fashion_mnist = fetch_openml('Fashion-MNIST', version=1, return_X_y=True, as_frame=False)
+    fmnist, labels = fashion_mnist
     fmnist = fmnist.reshape(fmnist.shape[0], -1)
-    labels = np.load("/Users/hyhuang/Desktop/MNIST/fmnist_labels.npy", allow_pickle=True)
+    
+    # Use subset for faster testing
+    fmnist = fmnist[:1000]
+    labels = labels[:1000].astype(int)
+    
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20, distance='manhattan')
     embedding = reducer.fit_transform(fmnist)
     generate_figure(embedding, labels, 'test_fmnist_manhattan')
@@ -68,10 +83,18 @@ if __name__ == "__main__":
     embedding = reducer.fit_transform(fmnist)
     generate_figure(embedding, labels, 'test_fmnist_manhattan_noseed')
 
-    # MNIST
-    mnist = np.load("/Users/hyhuang/Desktop/MNIST/mnist_images.npy", allow_pickle=True)
+
+def test_pacmap_mnist_metrics():
+    """Test PaCMAP with MNIST using different distance metrics."""
+    # Load MNIST from OpenML
+    mnist_data = fetch_openml('mnist_784', version=1, return_X_y=True, as_frame=False)
+    mnist, labels = mnist_data
     mnist = mnist.reshape(mnist.shape[0], -1)
-    labels = np.load("/Users/hyhuang/Desktop/MNIST/mnist_labels.npy", allow_pickle=True)
+    
+    # Use subset for faster testing
+    mnist = mnist[:1000]
+    labels = labels[:1000].astype(int)
+    
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20, distance='angular')
     embedding = reducer.fit_transform(mnist)
     generate_figure(embedding, labels, 'test_mnist_angular')
@@ -85,3 +108,11 @@ if __name__ == "__main__":
     generate_figure(embedding, labels, 'test_mnist_manhattan')
 
     print('Figures have been generated successfully.')
+
+
+if __name__ == "__main__":
+    # Backward compatibility - can still run as script
+    test_pacmap_metric_initialization()
+    test_pacmap_metric_deterministic()
+    test_pacmap_fashion_mnist_manhattan()
+    test_pacmap_mnist_metrics()

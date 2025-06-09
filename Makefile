@@ -1,4 +1,8 @@
 .PHONY: test
 
 test:
-	pytest test/test_general.py test/test_transform_iris.py test/test_randomness.py
+	pytest \
+		test/test_general.py \
+		test/test_transform_iris.py \
+		test/test_randomness.py \
+		test/test_metric.py
