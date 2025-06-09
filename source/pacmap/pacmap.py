@@ -869,6 +869,12 @@ class PaCMAP(BaseEstimator):
             self.random_state = 0
             _RANDOM_STATE = None  # Reset random state
 
+        VALID_ANNOY_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
+        if self.distance not in VALID_ANNOY_METRICS:
+            raise NotImplementedError(
+                "`distance` must be one of {}".format(", ".join(VALID_ANNOY_METRICS))
+            )
+
         if self.n_components < 1:
             raise ValueError(
                 "The number of projection dimensions must be at least 1."
