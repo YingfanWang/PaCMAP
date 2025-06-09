@@ -102,7 +102,7 @@ def test_pacmap_fashion_mnist():
 
     # Use subset for faster testing
     fmnist = fmnist[:1000]
-    labels = labels[:1000]
+    labels = labels[:1000].astype(int)
 
     reducer = pacmap.PaCMAP(
         n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20
@@ -115,7 +115,7 @@ def test_pacmap_fashion_mnist():
     test_utils.generate_figure(embedding, labels, "test_fmnist_noseed")
 
 
-def test_pacmap_mnist():
+def test_pacmap_mnist(tmp_path):
     """Test PaCMAP with MNIST dataset from OpenML."""
     # Load MNIST from OpenML
     mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, as_frame=False)
@@ -124,7 +124,7 @@ def test_pacmap_mnist():
 
     # Use subset for faster testing
     mnist = mnist[:1000]
-    labels = labels[:1000]
+    labels = labels[:1000].astype(int)
 
     reducer = pacmap.PaCMAP(
         n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20
@@ -145,7 +145,8 @@ def test_pacmap_mnist():
     plt.savefig("./test_output/test_mnist_noseed.png")
 
     # Save and load
-    pacmap.save(reducer, "./test_instances/mnist_reducer")
+    save_path = tmp_path / "mnist_reducer"
+    pacmap.save(reducer, str(save_path))
     embedding = reducer.transform(mnist)
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap="Spectral")
@@ -153,7 +154,7 @@ def test_pacmap_mnist():
     ax.set_title("test_saveload")
     plt.savefig("./test_output/test_saveload_before.png")
 
-    reducer = pacmap.load("./test_instances/mnist_reducer")
+    reducer = pacmap.load(str(save_path))
     embedding = reducer.transform(mnist)
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap="Spectral")
@@ -166,6 +167,8 @@ def test_pacmap_mnist():
 
 if __name__ == "__main__":
     # Backward compatibility - can still run as script
+    import tempfile
+
     test_pacmap_initialization()
     test_pacmap_deterministic()
     test_pacmap_small_dataset()
@@ -173,4 +176,7 @@ if __name__ == "__main__":
     test_pacmap_same_dimensional()
     test_pacmap_three_dimensional()
     test_pacmap_fashion_mnist()
-    test_pacmap_mnist()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        from pathlib import Path
+
+        test_pacmap_mnist(Path(tmp_dir))
