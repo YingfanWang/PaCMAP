@@ -64,7 +64,6 @@ def setup_transform_test(mnist_data, n_splits, save_tree=False):
 def test_transform_2_splits(mnist_data):
     """Test transform feature with 2 splits"""
     X_train, X_test, embeddings = setup_transform_test(mnist_data, 2)
-
     [embedding, embedding_extra, embedding_combined] = embeddings
 
     # Basic assertions to verify the transform worked correctly
@@ -80,7 +79,6 @@ def test_transform_2_splits(mnist_data):
 def test_transform_5_splits(mnist_data):
     """Test transform feature with 5 splits"""
     X_train, X_test, embeddings = setup_transform_test(mnist_data, 5)
-
     [embedding, embedding_extra, embedding_combined] = embeddings
 
     # Basic assertions to verify the transform worked correctly
@@ -96,7 +94,6 @@ def test_transform_5_splits(mnist_data):
 def test_transform_10_splits(mnist_data):
     """Test transform feature with 10 splits"""
     X_train, X_test, embeddings = setup_transform_test(mnist_data, 10)
-
     [embedding, embedding_extra, embedding_combined] = embeddings
 
     # Basic assertions to verify the transform worked correctly
