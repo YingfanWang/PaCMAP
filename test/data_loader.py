@@ -16,6 +16,9 @@ def load_datasets_from_fixture(path=None):
 
     Returns:
         dict: Dictionary mapping dataset names to loaded OpenML datasets
+
+    Note:
+        Downloaded datasets are cached by sklearn in ~/scikit_learn_data/ by default.
     """
     if path is None:
         # Get path relative to this file
