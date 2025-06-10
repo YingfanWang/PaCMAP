@@ -171,11 +171,11 @@ We have a suite of tests. We run these tests on all pull requests, and every com
 
 We test against several version of Python. (See [`.github/workflows/test.yml`][workflow-python-versions] for our currently tested versions.)
 
-If you are contributing code, please confirm our tests pass, and consider adding your own tests for any new functionality.
+If you are contributing code, please confirm our tests pass, and consider adding your own for any new functionality.
 
 You may run the test suite like so:
 
-```
+```sh
 # Clean up past outputs (plots will be DELETED),
 # and uninstall the public package version of pacmap.
 make clean
