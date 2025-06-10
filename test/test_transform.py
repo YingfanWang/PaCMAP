@@ -14,7 +14,7 @@ def mnist_data():
     """Load MNIST data for testing"""
     print("Loading data")
     # Load MNIST from OpenML
-    mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, as_frame=False, parser='liac-arff')
+    mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, parser='pandas', as_frame=False)
     mnist, labels = mnist_data
     mnist = mnist.reshape(mnist.shape[0], -1)
 

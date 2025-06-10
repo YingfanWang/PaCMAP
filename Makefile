@@ -2,7 +2,7 @@
 
 install-dev:
 	pip install -e .
-	pip install pytest matplotlib
+	pip install pytest matplotlib pandas
 
 test:
 	pytest \

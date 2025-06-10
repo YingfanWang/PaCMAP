@@ -103,9 +103,7 @@ def debug_nondeterminism(b, c):
 def test_pacmap_fashion_mnist():
     """Test PaCMAP with Fashion-MNIST dataset from OpenML."""
     # Load Fashion-MNIST from OpenML
-    fashion_mnist = fetch_openml(
-        "Fashion-MNIST", version=1, return_X_y=True, as_frame=False, parser='liac-arff'
-    )
+    fashion_mnist = fetch_openml("Fashion-MNIST", version=1, return_X_y=True, parser='pandas', as_frame=False)
     fmnist, labels = fashion_mnist
     fmnist = fmnist.reshape(fmnist.shape[0], -1)
 
@@ -125,7 +123,7 @@ def test_pacmap_fashion_mnist():
 def test_pacmap_mnist(tmp_path):
     """Test PaCMAP with MNIST dataset from OpenML."""
     # Load MNIST from OpenML
-    mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, as_frame=False, parser='liac-arff')
+    mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, parser='pandas', as_frame=False)
     mnist, labels = mnist_data
     mnist = mnist.reshape(mnist.shape[0], -1)
 
