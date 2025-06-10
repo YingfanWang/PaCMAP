@@ -2,4 +2,3 @@ numpy >= 1.20
 numba >= 0.57
 scikit-learn >= 0.20
 annoy >= 1.11
-pytest >= 8.4.0
