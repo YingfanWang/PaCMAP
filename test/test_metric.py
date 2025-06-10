@@ -1,12 +1,12 @@
 '''
 A test script that ensures PaCMAP can be successfully used with other metrics.
 '''
-import sklearn
+from sklearn.datasets import fetch_openml
 import pacmap
 import numpy as np
-import matplotlib.pyplot as plt
-from test_utils import *
-from sklearn.datasets import fetch_openml
+from test_utils import generate_figure
+from test_general import debug_nondeterminism
+import pytest
 
 
 def test_pacmap_metric_initialization():
@@ -15,15 +15,14 @@ def test_pacmap_metric_initialization():
     pacmap.PaCMAP(distance='manhattan')
     pacmap.PaCMAP(distance='angular')
     pacmap.PaCMAP(distance='hamming')
-    print("Instance initialized successfully.")
-    try:
+
+def test_pacmap_metric_unknown_fails():
+    """Test that PaCMAP fails to initialize with unknown distance metrics."""
+    with pytest.raises(NotImplementedError):
         pacmap.PaCMAP(distance='unknown')
-        assert False, "Should have raised NotImplementedError"
-    except NotImplementedError:
-        print("Not implemented error raised successfully")
 
 
-def test_pacmap_metric_deterministic():
+def test_pacmap_metric_deterministic_manhattan():
     """Test PaCMAP deterministic behavior with different metrics."""
     # Initialize sample data
     sample_data = np.random.normal(size=(10000, 10))
@@ -31,38 +30,24 @@ def test_pacmap_metric_deterministic():
     b_out = b.fit_transform(sample_data)
     c = pacmap.PaCMAP(random_state=10, distance='manhattan')
     c_out = c.fit_transform(sample_data)
+    try:
+        assert np.allclose(b_out, c_out, atol=1e-8)
+    except AssertionError:
+        # Print debug output and re-raise error.
+        debug_nondeterminism(b, c)
+        raise AssertionError
+
+def test_pacmap_metric_angular():
+    """Test PaCMAP works with angular distance metric."""
+    sample_data = np.random.normal(size=(10000, 10))
     d = pacmap.PaCMAP(distance='angular')
     d_out = d.fit_transform(sample_data)
+
+def test_pacmap_metric_hamming():
+    """Test PaCMAP works with hamming distance metric."""
+    sample_data = np.random.normal(size=(10000, 10))
     e = pacmap.PaCMAP(distance='hamming', apply_pca=False)
     e_out = e.fit_transform(sample_data, init='random')
-    print('Experiment has been done successfully for each metric.')
-
-    # Ensure the random state settings can be applied
-    try:
-        assert(np.sum(np.abs(b_out-c_out))<1e-8)
-        print("The output is deterministic.")
-    except AssertionError:
-        print("The output is not deterministic.")
-        try:
-            assert(np.sum(np.abs(b.pair_FP.astype(int)-c.pair_FP.astype(int)))<1e-8)
-            assert(np.sum(np.abs(b.pair_MN.astype(int)-c.pair_MN.astype(int)))<1e-8)
-        except AssertionError:
-            print('The pairs are not deterministic')
-            for i in range(5000):
-                if np.sum(np.abs(b.pair_FP[i] - c.pair_FP[i])) > 1e-8:
-                    print("FP")
-                    print(i)
-                    print(b.pair_FP[i])
-                    print(c.pair_FP[i])
-                    break
-            for i in range(5000):
-                if np.sum(np.abs(b.pair_MN[i] - c.pair_MN[i])) > 1e-8:
-                    print('MN')
-                    print(i)
-                    print(b.pair_MN[i])
-                    print(c.pair_MN[i])
-                    break
-
 
 def test_pacmap_fashion_mnist_manhattan():
     """Test PaCMAP with Fashion-MNIST using Manhattan distance."""
