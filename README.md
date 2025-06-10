@@ -1,4 +1,4 @@
-# PaCMAP
+# PaCMAP [![Tests](https://github.com/patcon/PaCMAP/actions/workflows/test.yml/badge.svg?branch=97-pytest)](https://github.com/patcon/PaCMAP/actions/workflows/test.yml)
 
 ## <a name='News'></a>News
 
