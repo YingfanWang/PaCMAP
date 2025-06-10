@@ -1,8 +1,8 @@
 .PHONY: install test clean
 
-install:
+install-dev:
 	pip install -e .
-	pip install pytest
+	pip install pytest matplotlib
 
 test:
 	pytest \
