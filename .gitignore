@@ -1,5 +1,5 @@
 /source/pacmap.egg-info/
 /test/output/
-*.DS_store
-*.vscode
-*/__pycache__/
+.DS_store
+.vscode
+__pycache__/
