@@ -1,7 +1,6 @@
 '''
 A test script that ensures PaCMAP can be successfully used with other metrics.
 '''
-from sklearn.datasets import fetch_openml
 import pacmap
 import numpy as np
 from test_utils import generate_figure
@@ -49,11 +48,10 @@ def test_pacmap_metric_hamming():
     e = pacmap.PaCMAP(distance='hamming', apply_pca=False)
     e_out = e.fit_transform(sample_data, init='random')
 
-def test_pacmap_fashion_mnist_manhattan():
+def test_pacmap_fashion_mnist_manhattan(openml_datasets):
     """Test PaCMAP with Fashion-MNIST using Manhattan distance."""
-    # Load Fashion-MNIST from OpenML
-    fashion_mnist = fetch_openml('Fashion-MNIST', version=1, return_X_y=True, parser='pandas', as_frame=False)
-    fmnist, labels = fashion_mnist
+    # Load Fashion-MNIST from fixture
+    fmnist, labels = openml_datasets["Fashion-MNIST"]
     fmnist = fmnist.reshape(fmnist.shape[0], -1)
     
     # Use subset for faster testing
@@ -69,11 +67,10 @@ def test_pacmap_fashion_mnist_manhattan():
     generate_figure(embedding, labels, 'test_fmnist_manhattan_noseed')
 
 
-def test_pacmap_mnist_metrics():
+def test_pacmap_mnist_metrics(openml_datasets):
     """Test PaCMAP with MNIST using different distance metrics."""
-    # Load MNIST from OpenML
-    mnist_data = fetch_openml('mnist_784', version=1, return_X_y=True, parser='pandas', as_frame=False)
-    mnist, labels = mnist_data
+    # Load MNIST from fixture
+    mnist, labels = openml_datasets["mnist_784"]
     mnist = mnist.reshape(mnist.shape[0], -1)
     
     # Use subset for faster testing

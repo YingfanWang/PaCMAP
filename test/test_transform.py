@@ -4,18 +4,16 @@
 import pacmap
 import numpy as np
 import pytest
-from sklearn.datasets import fetch_openml
 from sklearn.model_selection import StratifiedKFold
 from test_utils import generate_combined_figure
 
 
 @pytest.fixture(scope="module")
-def mnist_data():
+def mnist_data(openml_datasets):
     """Load MNIST data for testing"""
     print("Loading data")
-    # Load MNIST from OpenML
-    mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, parser='pandas', as_frame=False)
-    mnist, labels = mnist_data
+    # Load MNIST from fixture
+    mnist, labels = openml_datasets["mnist_784"]
     mnist = mnist.reshape(mnist.shape[0], -1)
 
     # Use subset for faster testing

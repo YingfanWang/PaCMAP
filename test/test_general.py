@@ -1,7 +1,6 @@
 '''
 A general test script that ensures PaCMAP can be successfully loaded.
 '''
-from sklearn.datasets import fetch_openml
 from pacmap import pacmap
 import numpy as np
 import matplotlib.pyplot as plt
@@ -100,11 +99,10 @@ def debug_nondeterminism(b, c):
                     print(c.pair_MN[i])
                     break
 
-def test_pacmap_fashion_mnist():
+def test_pacmap_fashion_mnist(openml_datasets):
     """Test PaCMAP with Fashion-MNIST dataset from OpenML."""
-    # Load Fashion-MNIST from OpenML
-    fashion_mnist = fetch_openml("Fashion-MNIST", version=1, return_X_y=True, parser='pandas', as_frame=False)
-    fmnist, labels = fashion_mnist
+    # Load Fashion-MNIST from fixture
+    fmnist, labels = openml_datasets["Fashion-MNIST"]
     fmnist = fmnist.reshape(fmnist.shape[0], -1)
 
     # Use subset for faster testing
@@ -120,11 +118,10 @@ def test_pacmap_fashion_mnist():
     test_utils.generate_figure(embedding, labels, 'test_fmnist_noseed')
 
 
-def test_pacmap_mnist(tmp_path):
+def test_pacmap_mnist(tmp_path, openml_datasets):
     """Test PaCMAP with MNIST dataset from OpenML."""
-    # Load MNIST from OpenML
-    mnist_data = fetch_openml("mnist_784", version=1, return_X_y=True, parser='pandas', as_frame=False)
-    mnist, labels = mnist_data
+    # Load MNIST from fixture
+    mnist, labels = openml_datasets["mnist_784"]
     mnist = mnist.reshape(mnist.shape[0], -1)
 
     # Use subset for faster testing

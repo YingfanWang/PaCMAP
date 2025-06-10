@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Fashion-MNIST",
+    "version": 1
+  },
+  {
+    "name": "mnist_784",
+    "version": 1
+  }
+]
