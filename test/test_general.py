@@ -77,26 +77,28 @@ def test_pacmap_same_dimensional_3d():
     h_out = h.fit_transform(three_dimensional_data)
 
 def debug_nondeterminism(b, c):
-    print("The output is not deterministic.")
-    try:
-        assert(np.sum(np.abs(b.pair_FP.astype(int)-c.pair_FP.astype(int)))<1e-8)
-        assert(np.sum(np.abs(b.pair_MN.astype(int)-c.pair_MN.astype(int)))<1e-8)
-    except AssertionError:
-        print('The pairs are not deterministic')
-        for i in range(5000):
-            if np.sum(np.abs(b.pair_FP[i] - c.pair_FP[i])) > 1e-8:
-                print("FP")
-                print(i)
-                print(b.pair_FP[i])
-                print(c.pair_FP[i])
-                break
-        for i in range(5000):
-            if np.sum(np.abs(b.pair_MN[i] - c.pair_MN[i])) > 1e-8:
-                print('MN')
-                print(i)
-                print(b.pair_MN[i])
-                print(c.pair_MN[i])
-                break
+    DEBUG = True
+    if DEBUG:
+        print("The output is not deterministic.")
+        try:
+            assert(np.sum(np.abs(b.pair_FP.astype(int)-c.pair_FP.astype(int)))<1e-8)
+            assert(np.sum(np.abs(b.pair_MN.astype(int)-c.pair_MN.astype(int)))<1e-8)
+        except AssertionError:
+            print('The pairs are not deterministic')
+            for i in range(5000):
+                if np.sum(np.abs(b.pair_FP[i] - c.pair_FP[i])) > 1e-8:
+                    print("FP")
+                    print(i)
+                    print(b.pair_FP[i])
+                    print(c.pair_FP[i])
+                    break
+            for i in range(5000):
+                if np.sum(np.abs(b.pair_MN[i] - c.pair_MN[i])) > 1e-8:
+                    print('MN')
+                    print(i)
+                    print(b.pair_MN[i])
+                    print(c.pair_MN[i])
+                    break
 
 def test_pacmap_fashion_mnist():
     """Test PaCMAP with Fashion-MNIST dataset from OpenML."""
