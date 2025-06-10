@@ -19,3 +19,4 @@ clean:
 	rm -rf dist/
 	rm -rf *.egg-info/
 	rm -rf source/*.egg-info/
+	rm -rf test/output/

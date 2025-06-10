@@ -132,7 +132,7 @@ def test_pacmap_mnist(tmp_path):
     embedding = reducer.fit_transform(mnist, init="pca")
     test_utils.generate_figure(embedding, labels, "test_mnist_seed")
 
-    plt.savefig("./test_output/test_mnist_seed.png")
+    plt.savefig("./test/output/test_mnist_seed.png")
 
     reducer = pacmap.PaCMAP(
         n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, save_tree=True
@@ -142,7 +142,7 @@ def test_pacmap_mnist(tmp_path):
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap="Spectral")
     ax.axis("off")
     ax.set_title("test_mnist_noseed")
-    plt.savefig("./test_output/test_mnist_noseed.png")
+    plt.savefig("./test/output/test_mnist_noseed.png")
 
     # Save and load
     save_path = tmp_path / "mnist_reducer"
@@ -152,7 +152,7 @@ def test_pacmap_mnist(tmp_path):
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap="Spectral")
     ax.axis("off")
     ax.set_title("test_saveload")
-    plt.savefig("./test_output/test_saveload_before.png")
+    plt.savefig("./test/output/test_saveload_before.png")
 
     reducer = pacmap.load(str(save_path))
     embedding = reducer.transform(mnist)
@@ -160,7 +160,7 @@ def test_pacmap_mnist(tmp_path):
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap="Spectral")
     ax.axis("off")
     ax.set_title("test_saveload")
-    plt.savefig("./test_output/test_saveload_after.png")
+    plt.savefig("./test/output/test_saveload_after.png")
 
     print("Figures have been generated successfully.")
 

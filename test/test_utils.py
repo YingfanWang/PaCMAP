@@ -6,7 +6,7 @@ def generate_figure(embedding, labels, title):
     ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
     ax.axis('off')
     ax.set_title(title)
-    plt.savefig(f"./test_output/{title}.png")
+    plt.savefig(f"./test/output/{title}.png")
 
 
 def generate_combined_figure(embeddings, labels, titles, theme_title):
@@ -26,4 +26,4 @@ def generate_combined_figure(embeddings, labels, titles, theme_title):
         ax.set_title(title)
     for i in range(3 * n_rows - len_subfigs):
         axes[-i - 1].axis('off')
-    plt.savefig(f"./test_output/{theme_title}.png")
+    plt.savefig(f"./test/output/{theme_title}.png")
