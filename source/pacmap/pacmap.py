@@ -11,6 +11,7 @@ import pickle as pkl
 
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
+from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
 from annoy import AnnoyIndex
 
@@ -1032,6 +1033,9 @@ class PaCMAP(BaseEstimator):
         save_pairs: bool, optional
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.
         '''
+
+        # If the estimator is not fitted, then raise NotFittedError
+        check_is_fitted(estimator=self, attributes="embedding_")
 
         # Preprocess the data
         X = np.copy(X).astype(np.float32)
