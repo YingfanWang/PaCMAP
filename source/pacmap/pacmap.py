@@ -360,7 +360,7 @@ def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim, low_dim):
         xmin = 0  # placeholder
         xmax = 0  # placeholder
         xmean = np.mean(X, axis=0)
-        X -= np.mean(X, axis=0)
+        X -= xmean
         tsvd = TruncatedSVD(n_components=100, random_state=seed)
         X = tsvd.fit_transform(X)
         pca_solution = True
