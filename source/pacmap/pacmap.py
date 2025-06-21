@@ -11,6 +11,7 @@ import pickle as pkl
 
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
+from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
 from annoy import AnnoyIndex
 
@@ -360,7 +361,7 @@ def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim, low_dim):
         xmin = 0  # placeholder
         xmax = 0  # placeholder
         xmean = np.mean(X, axis=0)
-        X -= np.mean(X, axis=0)
+        X -= xmean
         tsvd = TruncatedSVD(n_components=100, random_state=seed)
         X = tsvd.fit_transform(X)
         pca_solution = True
@@ -1032,6 +1033,9 @@ class PaCMAP(BaseEstimator):
         save_pairs: bool, optional
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.
         '''
+
+        # If the estimator is not fitted, then raise NotFittedError
+        check_is_fitted(estimator=self, attributes="embedding_")
 
         # Preprocess the data
         X = np.copy(X).astype(np.float32)
