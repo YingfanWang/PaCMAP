@@ -755,8 +755,8 @@ def load(
     If the index and reducer are saved with `common_prefix`,
     this will load both into the returned object.
 
-    Otherwise, pass `index_path` to attach any saved index.
-    `reducer_path` can be used to specify the full path to load.
+    Otherwise, pass `index_path` to attach any saved index and
+    `reducer_path` to load the saved associated reducer object.
 
     Note: only one of `common_prefix` or `reducer_path` is needed.
     '''
