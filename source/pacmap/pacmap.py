@@ -907,12 +907,19 @@ class PaCMAP(BaseEstimator):
                             " requested. n_MN will be reduced.")
         self.n_MN = min(self.n_MN, n - 1)
 
+        disable_checks = os.environ.get("PACMAP_DISABLE_CHECKS", "").lower() in {"1", "true", "yes"}
         if self.n_neighbors < 1:
-            raise ValueError(
-                "The number of nearest neighbors can't be less than 1")
+            msg = "The number of nearest neighbors can't be less than 1"
+            if disable_checks:
+                logger.warning(msg)
+            else:
+                raise ValueError(msg)
         if self.n_FP < 1:
-            raise ValueError(
-                "The number of further points can't be less than 1")
+            msg = "The number of further points can't be less than 1"
+            if disable_checks:
+                logger.warning(msg)
+            else:
+                raise ValueError(msg)
 
     def fit(self, X, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
