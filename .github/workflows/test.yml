@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main, 97-pytest ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
