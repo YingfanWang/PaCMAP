@@ -14,12 +14,15 @@ from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
 from annoy import AnnoyIndex
-from typing import Optional
+from typing import Literal, Optional, Union, Tuple, List
 
 global _RANDOM_STATE
 _RANDOM_STATE = None
 
 logger = logging.getLogger(__name__)
+
+InitType = Literal["pca", "random"]
+DistanceMetric = Literal["euclidean", "manhattan", "angular", "hamming"]
 
 
 @numba.njit("f4(f4[:])", cache=True)
@@ -353,7 +356,7 @@ def find_weight(w_MN_init, itr, *, num_iters):
     return w_MN, w_neighbors, w_FP
 
 
-def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim, low_dim):
+def preprocess_X(X: np.ndarray, distance: DistanceMetric, apply_pca: bool, verbose: bool, seed, high_dim, low_dim):
     '''Preprocess a dataset.
     '''
     tsvd = None
@@ -396,7 +399,7 @@ def preprocess_X_new(X, distance, xmin, xmax, xmean, tsvd, apply_pca, verbose):
     return X
 
 
-def distance_to_option(distance='euclidean'):
+def distance_to_option(distance: DistanceMetric = 'euclidean'):
     '''A helper function that translates distance metric to int options.
     Such a translation is useful for numba acceleration.
     '''
@@ -423,7 +426,7 @@ def generate_extra_pair_basis(basis,
                               X,
                               n_neighbors,
                               tree: AnnoyIndex,
-                              distance='euclidean',
+                              distance: DistanceMetric = 'euclidean',
                               verbose=True
                               ):
     '''Generate pairs that connects the extra set of data to the fitted basis.
@@ -469,7 +472,7 @@ def generate_pair(
         n_neighbors,
         n_MN,
         n_FP,
-        distance='euclidean',
+        distance: DistanceMetric = 'euclidean',
         verbose=True
 ):
     '''Generate pairs for the dataset.
@@ -528,7 +531,7 @@ def generate_pair_no_neighbors(
         n_MN,
         n_FP,
         pair_neighbors,
-        distance='euclidean',
+        distance: DistanceMetric = 'euclidean',
         verbose=True
 ):
     '''Generate mid-near pairs and further pairs for a given dataset.
@@ -847,23 +850,23 @@ class PaCMAP(BaseEstimator):
     '''
 
     def __init__(self,
-                 n_components=2,
-                 n_neighbors=10,
-                 MN_ratio=0.5,
-                 FP_ratio=2.0,
-                 pair_neighbors=None,
-                 pair_MN=None,
-                 pair_FP=None,
-                 distance="euclidean",
-                 lr=1.0,
-                 num_iters=(100, 100, 250),
-                 verbose=False,
-                 apply_pca=True,
-                 intermediate=False,
-                 intermediate_snapshots=[
+                 n_components: int = 2,
+                 n_neighbors: Union[int, None] = 10,
+                 MN_ratio: float = 0.5,
+                 FP_ratio: float = 2.0,
+                 pair_neighbors: Optional[np.ndarray] = None,
+                 pair_MN: Optional[np.ndarray] = None,
+                 pair_FP: Optional[np.ndarray] = None,
+                 distance: DistanceMetric = "euclidean",
+                 lr: float = 1.0,
+                 num_iters: Union[Tuple[int, int, int], int] = (100, 100, 250),
+                 verbose: bool = False,
+                 apply_pca: bool = True,
+                 intermediate: bool = False,
+                 intermediate_snapshots: List[int] = [
                      0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
-                 random_state=None,
-                 save_tree=False
+                 random_state: Optional[int] = None,
+                 save_tree: bool = False
                  ):
         self.n_components = n_components
         self.n_neighbors = n_neighbors
@@ -918,7 +921,7 @@ class PaCMAP(BaseEstimator):
             logger.warning(
                 "Running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
 
-    def decide_num_pairs(self, n):
+    def decide_num_pairs(self, n: int):
         if self.n_neighbors is None:
             if n <= 10000:
                 self.n_neighbors = 10
@@ -954,7 +957,7 @@ class PaCMAP(BaseEstimator):
             else:
                 raise ValueError(msg)
 
-    def fit(self, X, init=None, save_pairs=True):
+    def fit(self, X: np.ndarray, init: Optional[InitType] = None, save_pairs: bool = True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
 
         Parameters
@@ -1023,7 +1026,7 @@ class PaCMAP(BaseEstimator):
             self.del_pairs()
         return self
 
-    def fit_transform(self, X, init=None, save_pairs=True):
+    def fit_transform(self, X: np.ndarray, init: Optional[InitType] = None, save_pairs: bool = True):
         '''Projects a high dimensional dataset into a low-dimensional embedding and return the embedding.
 
         Parameters
@@ -1047,7 +1050,7 @@ class PaCMAP(BaseEstimator):
         else:
             return self.embedding_
 
-    def transform(self, X, basis=None, init=None, save_pairs=True):
+    def transform(self, X: np.ndarray, basis: Optional[np.ndarray] = None, init: Optional[InitType] = None, save_pairs: bool = True):
         '''Projects a high dimensional dataset into existing embedding space and return the embedding.
         Warning: In the current version of implementation, the `transform` method will treat the input as an
         additional dataset, which means the same point could be mapped into a different place.
@@ -1107,7 +1110,7 @@ class PaCMAP(BaseEstimator):
         else:
             return Y[self.embedding_.shape[0]:, :]
 
-    def sample_pairs(self, X, save_tree):
+    def sample_pairs(self, X: np.ndarray, save_tree: bool):
         '''
         Sample PaCMAP pairs from the dataset.
 
