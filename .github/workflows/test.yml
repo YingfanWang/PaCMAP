@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main ,type_compliant_for_3.8optionals]
+    branches: [ main]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
