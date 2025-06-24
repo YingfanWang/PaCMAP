@@ -114,7 +114,7 @@ def sample_FP(n_samples, maximum, reject_ind, self_ind):
                         break
                 else:
                     reject_sample = False
-        result[i] = j
+        result[i] = j  # type: ignore[possibly-unbound]
     return result
 
 
@@ -337,7 +337,7 @@ def pacmap_grad_fit(Y, pair_XP, w_neighbors):
     return grad
 
 
-def find_weight(w_MN_init, itr, *, num_iters):
+def find_weight(w_MN_init: float, itr: int, *, num_iters: Tuple[int, int, int]) -> Tuple[float, float, float]:
     '''Find the corresponding weight given the index of an iteration'''
     (phase_1_iters, phase_2_iters, _) = num_iters
 
@@ -347,12 +347,12 @@ def find_weight(w_MN_init, itr, *, num_iters):
         w_FP = 1.0
     elif itr < phase_1_iters + phase_2_iters:
         w_MN = 3.0
-        w_neighbors = 3
-        w_FP = 1
+        w_neighbors = 3.0
+        w_FP = 1.0
     else:
         w_MN = 0.0
-        w_neighbors = 1.
-        w_FP = 1.
+        w_neighbors = 1.0
+        w_FP = 1.0
     return w_MN, w_neighbors, w_FP
 
 
@@ -577,12 +577,12 @@ def pacmap(
     if isinstance(Yinit, np.ndarray):
         Yinit = Yinit.astype(np.float32)
         scaler = preprocessing.StandardScaler().fit(Yinit)
-        Y = scaler.transform(Yinit) * 0.0001
+        Y = scaler.transform(Yinit) * 0.0001  # type: ignore[operator]
     elif Yinit is None or (isinstance(Yinit, str) and Yinit == "pca"):
         if pca_solution:
             Y = 0.01 * X[:, :n_dims]
         else:
-            Y = 0.01 * tsvd.transform(X).astype(np.float32)
+            Y = 0.01 * tsvd.transform(X).astype(np.float32)  # type: ignore[attr-defined]
     elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
         if _RANDOM_STATE is not None:
             np.random.seed(_RANDOM_STATE)
@@ -602,7 +602,7 @@ def pacmap(
 
     if intermediate and inter_snapshots[0] == 0:
         itr_ind = 1  # move counter to one step
-        intermediate_states[0, :, :] = Y
+        intermediate_states[0, :, :] = Y  # type: ignore[index]
 
     print_verbose(
         (pair_neighbors.shape, pair_MN.shape, pair_FP.shape), verbose)
@@ -620,9 +620,9 @@ def pacmap(
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
         if intermediate:
-            if (itr + 1) == inter_snapshots[itr_ind]:
-                intermediate_states[itr_ind, :, :] = Y
-                itr_ind += 1
+            if (itr + 1) == inter_snapshots[itr_ind]:  # type: ignore[possibly-unbound]
+                intermediate_states[itr_ind, :, :] = Y  # type: ignore[index,possibly-unbound]
+                itr_ind += 1  # type: ignore[possibly-unbound]
         if (itr + 1) % 10 == 0:
             print_verbose("Iteration: %4d, Loss: %f" % (itr + 1, C), verbose)
 
@@ -661,11 +661,12 @@ def pacmap_fit(
     if isinstance(Yinit, np.ndarray):
         Yinit = Yinit.astype(np.float32)
         scaler = preprocessing.StandardScaler().fit(Yinit)
-        Y = np.concatenate([embedding, scaler.transform(Yinit) * 0.0001])
+        Y = np.concatenate([embedding, scaler.transform(Yinit).astype(np.float32) * 0.0001])  # type: ignore[attr-defined]
     elif Yinit is None or (isinstance(Yinit, str) and Yinit == "pca"):
         if pca_solution:
             Y = np.concatenate([embedding, 0.01 * X[:, :n_dims]])
         else:
+            assert tsvd is not None, "tsvd should not be None when pca_solution is False"
             Y = np.concatenate(
                 [embedding, 0.01 * tsvd.transform(X).astype(np.float32)])
     elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
@@ -686,7 +687,7 @@ def pacmap_fit(
 
     if intermediate and inter_snapshots[0] == 0:
         itr_ind = 1  # move counter to one step
-        intermediate_states[0, :, :] = Y
+        intermediate_states[0, :, :] = Y  # type: ignore[index]
 
     print_verbose(pair_XP.shape, verbose)
 
@@ -702,9 +703,9 @@ def pacmap_fit(
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
         if intermediate:
-            if (itr+1) == inter_snapshots[itr_ind]:
-                intermediate_states[itr_ind, :, :] = Y
-                itr_ind += 1
+            if (itr+1) == inter_snapshots[itr_ind]:  # type: ignore[possibly-unbound]
+                intermediate_states[itr_ind, :, :] = Y  # type: ignore[index,possibly-unbound]
+                itr_ind += 1  # type: ignore[possibly-unbound]
                 if itr_ind > 12:
                     itr_ind -= 1
         if (itr + 1) % 10 == 0:
@@ -724,6 +725,7 @@ def save(instance, common_prefix: str):
     ANNOY instance and other parts of PaCMAP separately.
     '''
     extra_info = ""
+    temp_tree = None
     if instance.save_tree:
         # Save the AnnoyIndex
         instance.tree.save(f"{common_prefix}.ann")
@@ -738,7 +740,7 @@ def save(instance, common_prefix: str):
     print(f"The PaCMAP instance is successfully saved at {common_prefix}.pkl{extra_info}.")
     print(f"To load the instance again, please do `pacmap.load({common_prefix})`.")
 
-    if instance.save_tree:
+    if instance.save_tree and temp_tree is not None:
         # Reload the AnnoyIndex
         instance.tree = temp_tree  # reload the annoy index
         assert instance.tree is not None
@@ -863,11 +865,13 @@ class PaCMAP(BaseEstimator):
                  verbose: bool = False,
                  apply_pca: bool = True,
                  intermediate: bool = False,
-                 intermediate_snapshots: List[int] = [
-                     0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
+                 intermediate_snapshots: Optional[List[int]] = None,
                  random_state: Optional[int] = None,
                  save_tree: bool = False
                  ):
+        if intermediate_snapshots is None:
+            intermediate_snapshots = [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
+
         self.n_components = n_components
         self.n_neighbors = n_neighbors
         self.MN_ratio = MN_ratio
@@ -875,7 +879,7 @@ class PaCMAP(BaseEstimator):
         self.pair_neighbors = pair_neighbors
         self.pair_MN = pair_MN
         self.pair_FP = pair_FP
-        self.distance = distance
+        self.distance: DistanceMetric = distance
         self.lr = lr
         self.num_iters = num_iters if hasattr(num_iters, "__len__") else (100, 100, num_iters)
         self.apply_pca = apply_pca
@@ -1093,7 +1097,7 @@ class PaCMAP(BaseEstimator):
         # Sample pairs
         self.pair_XP = generate_extra_pair_basis(basis, X,
                                                  self.n_neighbors,
-                                                 self.tree,
+                                                 self.tree,  # type: ignore[arg-type]
                                                  self.distance,
                                                  self.verbose
                                                  )
@@ -1183,7 +1187,7 @@ def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres
             if count > 100:
                 j = -1
                 reject_sample = False
-        result[i] = j
+        result[i] = j  # type: ignore[possibly-unbound]
     return result
 
 @numba.njit("i4[:,:](f4[:,:],i4[:,:],i4[:,:],i4,i4, f4[:,:], f4)", parallel=True, nogil=True, cache=True)
@@ -1290,12 +1294,12 @@ def localmap(
     if isinstance(Yinit, np.ndarray):
         Yinit = Yinit.astype(np.float32)
         scaler = preprocessing.StandardScaler().fit(Yinit)
-        Y = scaler.transform(Yinit) * 0.0001
+        Y = scaler.transform(Yinit) * 0.0001  # type: ignore[operator]
     elif Yinit is None or (isinstance(Yinit, str) and Yinit == "pca"):
         if pca_solution:
             Y = 0.01 * X[:, :n_dims]
         else:
-            Y = 0.01 * tsvd.transform(X).astype(np.float32)
+            Y = 0.01 * tsvd.transform(X).astype(np.float32)  # type: ignore[attr-defined]
     elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
         if _RANDOM_STATE is not None:
             np.random.seed(_RANDOM_STATE)
@@ -1315,7 +1319,7 @@ def localmap(
 
     if intermediate and inter_snapshots[0] == 0:
         itr_ind = 1  # move counter to one step
-        intermediate_states[0, :, :] = Y
+        intermediate_states[0, :, :] = Y  # type: ignore[index]
 
     print_verbose(
         (pair_neighbors.shape, pair_MN.shape, pair_FP.shape), verbose)
@@ -1340,9 +1344,9 @@ def localmap(
             pair_FP = sample_FP_pair_nearby(X, pair_neighbors, pair_FP, n_neighbors, n_FP, Y, low_dist_thres)
 
         if intermediate:
-            if (itr + 1) == inter_snapshots[itr_ind]:
-                intermediate_states[itr_ind, :, :] = Y
-                itr_ind += 1
+            if (itr + 1) == inter_snapshots[itr_ind]:  # type: ignore[possibly-unbound]
+                intermediate_states[itr_ind, :, :] = Y  # type: ignore[index,possibly-unbound]
+                itr_ind += 1  # type: ignore[possibly-unbound]
         if (itr + 1) % 10 == 0:
             print_verbose("Iteration: %4d, Loss: %f" % (itr + 1, C), verbose)
 
