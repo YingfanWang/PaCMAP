@@ -1,3 +1,5 @@
-*.DS_store
-*.vscode
-*/__pycache__/
+/source/pacmap.egg-info/
+/test/output/
+.DS_store
+.vscode
+__pycache__/

@@ -4,3 +4,15 @@ requires = [
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "--verbose",
+    # Use short form of tracebacks.
+    "--tb=short",
+    # Throw errors for typos in test markers.
+    "--strict-markers",
+]

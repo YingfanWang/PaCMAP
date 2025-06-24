@@ -1,10 +1,9 @@
-import sklearn
 import pacmap
 import numpy as np
-import matplotlib.pyplot as plt
 
 
-if __name__ == "__main__":
+def test_pacmap_randomness_deterministic():
+    """Test that PaCMAP produces deterministic results with same random_state."""
     # Initialize
     pacmap.PaCMAP()
     # print
@@ -44,3 +43,8 @@ if __name__ == "__main__":
                     print(instance1.pair_MN[i])
                     print(instance2.pair_MN[i])
                     break
+
+
+if __name__ == "__main__":
+    # Backward compatibility - can still run as script
+    test_pacmap_randomness_deterministic()
