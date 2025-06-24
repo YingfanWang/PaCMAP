@@ -1094,14 +1094,15 @@ class PaCMAP(BaseEstimator):
                                                  self.distance,
                                                  self.verbose
                                                  )
-        if not save_pairs:
-            self.pair_XP = None
-
         # Initialize and Optimize the embedding
         Y, intermediate_states = pacmap_fit(X, self.embedding_, self.n_components, self.pair_XP, self.lr,
                                             self.num_iters, init, self.verbose,
                                             self.intermediate, self.intermediate_snapshots,
                                             self.pca_solution, self.tsvd_transformer)
+
+        if not save_pairs:
+            self.pair_XP = None
+
         if self.intermediate:
             return intermediate_states
         else:
