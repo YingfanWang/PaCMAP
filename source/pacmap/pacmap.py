@@ -14,6 +14,7 @@ from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
 from annoy import AnnoyIndex
+from typing import Optional
 
 global _RANDOM_STATE
 _RANDOM_STATE = None
@@ -747,9 +748,9 @@ def attach_index(reducer, index_path: str):
 
 
 def load(
-        common_prefix: str | None = None,
-        reducer_path: str | None = None,
-        index_path: str | None = None,
+        common_prefix: Optional[str] = None,
+        reducer_path: Optional[str] = None,
+        index_path: Optional[str] = None,
     ):
     '''
     Load PaCMAP instance from a location specified by the user.
