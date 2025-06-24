@@ -24,7 +24,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Build package
-        run: uv build --wheel --sdist
+        run: uv build
 
       - name: Show artifacts
         run: ls -lh ./dist
