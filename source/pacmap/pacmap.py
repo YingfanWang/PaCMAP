@@ -84,7 +84,7 @@ def hamming_dist(x1, x2):
 
 
 @numba.njit(cache=True)
-def calculate_dist(x1, x2, distance_index):
+def calculate_dist(x1, x2, distance_index: int):
     if distance_index == 0:  # euclidean
         return euclid_dist(x1, x2)
     elif distance_index == 1:  # manhattan
@@ -146,7 +146,7 @@ def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
 
 
 @numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True, cache=True)
-def sample_MN_pair(X, n_MN, option=0):
+def sample_MN_pair(X: np.ndarray, n_MN, option=0):
     '''Sample Mid Near pairs.'''
     n = X.shape[0]
     pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
@@ -1425,31 +1425,31 @@ class LocalMAP(PaCMAP):
         
     '''
     def __init__(self,
-                    n_components=2,
-                    n_neighbors=10,
-                    MN_ratio=0.5,
-                    FP_ratio=2.0,
-                    pair_neighbors=None,
-                    pair_MN=None,
-                    pair_FP=None,
-                    distance="euclidean",
-                    lr=1.0,
-                    num_iters=(100, 100, 250),
-                    verbose=False,
-                    apply_pca=True,
-                    intermediate=False,
-                    intermediate_snapshots=[
+                    n_components: int = 2,
+                    n_neighbors: Union[int, None] = 10,
+                    MN_ratio: float = 0.5,
+                    FP_ratio: float = 2.0,
+                    pair_neighbors: Optional[np.ndarray] = None,
+                    pair_MN: Optional[np.ndarray] = None,
+                    pair_FP: Optional[np.ndarray] = None,
+                    distance: DistanceMetric = "euclidean",
+                    lr: float = 1.0,
+                    num_iters: Union[Tuple[int, int, int], int] = (100, 100, 250),
+                    verbose: bool = False,
+                    apply_pca: bool = True,
+                    intermediate: bool = False,
+                    intermediate_snapshots: List[int] = [
                         0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
-                    random_state=None,
-                    save_tree=False,
-                    low_dist_thres=10
+                    random_state: Optional[int] = None,
+                    save_tree: bool = False,
+                    low_dist_thres: float = 10
                     ):
             super().__init__(n_components, n_neighbors, MN_ratio, FP_ratio, pair_neighbors, pair_MN, pair_FP,
                             distance, lr, num_iters, verbose, apply_pca, intermediate, intermediate_snapshots, 
                             random_state, save_tree)
             self.low_dist_thres = low_dist_thres
             
-    def fit(self, X, init=None, save_pairs=True):
+    def fit(self, X: np.ndarray, init: Optional[InitType] = None, save_pairs: bool = True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
 
         Parameters
