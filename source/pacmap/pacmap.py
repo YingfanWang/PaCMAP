@@ -1442,7 +1442,7 @@ class LocalMAP(PaCMAP):
                         0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
                     random_state: Optional[int] = None,
                     save_tree: bool = False,
-                    low_dist_thres: float = 10
+                    low_dist_thres: float = 10.0
                     ):
             super().__init__(n_components, n_neighbors, MN_ratio, FP_ratio, pair_neighbors, pair_MN, pair_FP,
                             distance, lr, num_iters, verbose, apply_pca, intermediate, intermediate_snapshots, 
