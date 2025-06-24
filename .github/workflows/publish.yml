@@ -1,0 +1,45 @@
+name: Publish
+
+# pypi trusted publishing via OIDC
+permissions:
+  id-token: write
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    environment: release-dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build package
+        run: uv build --wheel --sdist
+
+      - name: Show artifacts
+        run: ls -lh ./dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./dist/*.whl
+
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
