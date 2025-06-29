@@ -21,6 +21,7 @@ _RANDOM_STATE = None
 
 logger = logging.getLogger(__name__)
 
+VALID_ANNOY_METRICS = {"euclidean", "manhattan", "angular", "hamming", "dot"}
 
 @numba.njit("f4(f4[:])", cache=True)
 def l2_norm(x):
@@ -80,6 +81,17 @@ def hamming_dist(x1, x2):
     return result
 
 
+@numba.njit("f4(f4[:],f4[:])", cache=True)
+def dot_dist(x1, x2):
+    """
+    Negative dot product between two vectors (used as distance).
+    """
+    result = 0.0
+    for i in range(x1.shape[0]):
+        result += x1[i] * x2[i]
+    return -result
+
+
 @numba.njit(cache=True)
 def calculate_dist(x1, x2, distance_index):
     if distance_index == 0:  # euclidean
@@ -90,6 +102,8 @@ def calculate_dist(x1, x2, distance_index):
         return angular_dist(x1, x2)
     elif distance_index == 3:  # hamming
         return hamming_dist(x1, x2)
+    elif distance_index == 4:  # dot
+        return dot_dist(x1, x2)
 
 
 @numba.njit("i4[:](i4,i4,i4[:],i4)", nogil=True, cache=True)
@@ -408,9 +422,11 @@ def distance_to_option(distance='euclidean'):
         option = 2
     elif distance == 'hamming':
         option = 3
+    elif distance == 'dot':
+        option = 4
     else:
         raise NotImplementedError('Distance other than euclidean, manhattan,' +
-                                  'angular or hamming is not supported')
+                                  'angular, hamming or dot is not supported')
     return option
 
 
@@ -813,7 +829,7 @@ class PaCMAP(BaseEstimator):
         Further pairs constructed from a previous run or from outside functions.
 
     distance: string, default="euclidean"
-        Distance metric used for high-dimensional space. Allowed metrics include euclidean, manhattan, angular, hamming.
+        Distance metric used for high-dimensional space. Allowed metrics include euclidean, manhattan, angular, hamming, dot.
 
     lr: float, default=1.0
         Learning rate of the Adam optimizer for embedding.
@@ -897,7 +913,6 @@ class PaCMAP(BaseEstimator):
             _RANDOM_STATE = None  # Reset random state
 
         # Raise error on initialization with an incorrect distance metric.
-        VALID_ANNOY_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
         if self.distance not in VALID_ANNOY_METRICS:
             raise NotImplementedError(
                 "`distance` must be one of {}".format(", ".join(VALID_ANNOY_METRICS))
