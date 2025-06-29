@@ -21,6 +21,8 @@ _RANDOM_STATE = None
 
 logger = logging.getLogger(__name__)
 
+VALID_ANNOY_METRICS = {"euclidean", "manhattan", "angular", "hamming"}
+
 InitType = Literal["pca", "random"]
 DistanceMetric = Literal["euclidean", "manhattan", "angular", "hamming"]
 
@@ -904,7 +906,6 @@ class PaCMAP(BaseEstimator):
             _RANDOM_STATE = None  # Reset random state
 
         # Raise error on initialization with an incorrect distance metric.
-        VALID_ANNOY_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
         if self.distance not in VALID_ANNOY_METRICS:
             raise NotImplementedError(
                 "`distance` must be one of {}".format(", ".join(VALID_ANNOY_METRICS))
