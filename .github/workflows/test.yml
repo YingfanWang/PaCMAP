@@ -40,8 +40,13 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-datasets-
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
     - name: Install dependencies
-      run: make install-dev
+      run: |
+        echo ${{ matrix.python-version }} > .python-version
+        make install-dev
 
     - name: Run tests
       run: make test
