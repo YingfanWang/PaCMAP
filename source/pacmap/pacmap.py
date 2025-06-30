@@ -7,6 +7,7 @@ import time
 import numba
 
 import numpy as np
+import numpy.typing as npt
 import pickle as pkl
 
 from sklearn.base import BaseEstimator
@@ -28,7 +29,7 @@ DistanceMetric = Literal["euclidean", "manhattan", "angular", "hamming"]
 
 
 @numba.njit("f4(f4[:])", cache=True)
-def l2_norm(x):
+def l2_norm(x: npt.NDArray[np.float32]) -> np.float32:
     """
     L2 norm of a vector.
     """
@@ -39,7 +40,7 @@ def l2_norm(x):
 
 
 @numba.njit("f4(f4[:],f4[:])", cache=True)
-def euclid_dist(x1, x2):
+def euclid_dist(x1: npt.NDArray[np.float32], x2: npt.NDArray[np.float32]) -> np.float32:
     """
     Euclidean distance between two vectors.
     """
@@ -50,18 +51,18 @@ def euclid_dist(x1, x2):
 
 
 @numba.njit("f4(f4[:],f4[:])", cache=True)
-def manhattan_dist(x1, x2):
+def manhattan_dist(x1: npt.NDArray[np.float32], x2: npt.NDArray[np.float32]) -> np.float32:
     """
     Manhattan distance between two vectors.
     """
     result = 0.0
     for i in range(x1.shape[0]):
         result += np.abs(x1[i] - x2[i])
-    return result
+    return np.float32(result)
 
 
 @numba.njit("f4(f4[:],f4[:])", cache=True)
-def angular_dist(x1, x2):
+def angular_dist(x1: npt.NDArray[np.float32], x2: npt.NDArray[np.float32]) -> np.float32:
     """
     Angular (i.e. cosine) distance between two vectors.
     """
@@ -72,9 +73,8 @@ def angular_dist(x1, x2):
         result += x1[i] * x2[i]
     return np.sqrt(2.0 - 2.0 * result / x1_norm / x2_norm)
 
-
 @numba.njit("f4(f4[:],f4[:])", cache=True)
-def hamming_dist(x1, x2):
+def hamming_dist(x1: npt.NDArray[np.float32], x2: npt.NDArray[np.float32]) -> np.float32:
     """
     Hamming distance between two vectors.
     """
@@ -82,11 +82,11 @@ def hamming_dist(x1, x2):
     for i in range(x1.shape[0]):
         if x1[i] != x2[i]:
             result += 1.0
-    return result
+    return np.float32(result)
 
 
 @numba.njit(cache=True)
-def calculate_dist(x1, x2, distance_index: int):
+def calculate_dist(x1: npt.NDArray[np.float32], x2: npt.NDArray[np.float32], distance_index: int) -> np.float32:
     if distance_index == 0:  # euclidean
         return euclid_dist(x1, x2)
     elif distance_index == 1:  # manhattan
@@ -95,12 +95,15 @@ def calculate_dist(x1, x2, distance_index: int):
         return angular_dist(x1, x2)
     elif distance_index == 3:  # hamming
         return hamming_dist(x1, x2)
+    else:
+        raise NotImplementedError
 
 
 @numba.njit("i4[:](i4,i4,i4[:],i4)", nogil=True, cache=True)
-def sample_FP(n_samples, maximum, reject_ind, self_ind):
+def sample_FP(n_samples: int, maximum: int, reject_ind: npt.NDArray[np.int32], self_ind: int) -> npt.NDArray[np.int32]:
     """Sample `n_samples` samples from `maximum` points, excluding the `reject_ind` points."""
     result = np.empty(n_samples, dtype=np.int32)
+    j = -1
     for i in range(n_samples):
         reject_sample = True
         while reject_sample:
@@ -116,12 +119,12 @@ def sample_FP(n_samples, maximum, reject_ind, self_ind):
                         break
                 else:
                     reject_sample = False
-        result[i] = j  # type: ignore[possibly-unbound]
+        result[i] = j
     return result
 
 
 @numba.njit("i4[:,:](f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True, cache=True)
-def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
+def sample_neighbors_pair(X: npt.NDArray[np.float32], scaled_dist: npt.NDArray[np.float32], nbrs: npt.NDArray[np.int32], n_neighbors: int) -> npt.NDArray[np.int32]:
     n = X.shape[0]
     pair_neighbors = np.empty((n * n_neighbors, 2), dtype=np.int32)
 
@@ -134,7 +137,7 @@ def sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors):
 
 
 @numba.njit("i4[:,:](i4,f4[:,:],f4[:,:],i4[:,:],i4)", parallel=True, nogil=True, cache=True)
-def sample_neighbors_pair_basis(n_basis, X, scaled_dist, nbrs, n_neighbors):
+def sample_neighbors_pair_basis(n_basis: int, X: npt.NDArray[np.float32], scaled_dist: npt.NDArray[np.float32], nbrs: npt.NDArray[np.int32], n_neighbors: int) -> npt.NDArray[np.int32]:
     '''Sample Nearest Neighbor pairs for additional data.'''
     n = X.shape[0]
     pair_neighbors = np.empty((n * n_neighbors, 2), dtype=np.int32)
