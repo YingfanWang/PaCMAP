@@ -46,7 +46,7 @@ jobs:
     - name: Install dependencies
       run: |
         echo ${{ matrix.python-version }} > .python-version
-        uv sync --locked --all-extras --dev
+        make install-dev
 
     - name: Run tests
       run: make test

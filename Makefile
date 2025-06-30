@@ -6,8 +6,11 @@ requirements-test.txt:
 requirements.txt:
 	uv pip compile pyproject.toml -o requirements.txt
 
-install: requirements-test.txt
-	uv sync
+install-dev:
+	uv sync --locked --all-extras --dev
+
+install:
+	uv sync --locked
 
 test:
 	uv run pytest \
