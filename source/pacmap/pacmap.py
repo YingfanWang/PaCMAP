@@ -1184,10 +1184,14 @@ def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres
         result[i] = j
     return result
 
-@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4[:,:],i4,i4, f4[:,:], f4)", parallel=True, nogil=True, cache=True)
-def sample_FP_pair_nearby(X, pair_neighbors, old_pair_FP, n_neighbors, n_FP, Y, low_dist_thres):
+@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4[:,:], f4[:,:], f4)", parallel=True, nogil=True, cache=True)
+def sample_FP_pair_nearby(X, pair_neighbors, old_pair_FP, Y, low_dist_thres):
     '''Resample Further pairs for local graph adjustment'''
     n = X.shape[0]
+
+    n_neighbors = pair_neighbors.shape[0]//n
+    n_FP = old_pair_FP.shape[0]//n
+
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
         FP_index = sample_FP_nearby(
@@ -1275,9 +1279,6 @@ def localmap(
     start_time = time.time()
     n, _ = X.shape
 
-    n_neighbors = pair_neighbors.shape[0]//n
-    n_FP = pair_FP.shape[0]//n
-
     if intermediate:
         intermediate_states = np.empty(
             (len(inter_snapshots), n, n_dims), dtype=np.float32)
@@ -1335,7 +1336,7 @@ def localmap(
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
         if (itr > num_iters[0] + num_iters[1]) and (itr % 10 == 0):
-            pair_FP = sample_FP_pair_nearby(X, pair_neighbors, pair_FP, n_neighbors, n_FP, Y, low_dist_thres)
+            pair_FP = sample_FP_pair_nearby(X, pair_neighbors, pair_FP, Y, low_dist_thres)
 
         if intermediate:
             if (itr + 1) == inter_snapshots[itr_ind]:
