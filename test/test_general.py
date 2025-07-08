@@ -3,7 +3,6 @@ A general test script that ensures PaCMAP can be successfully loaded.
 '''
 from pacmap import pacmap
 import numpy as np
-import matplotlib.pyplot as plt
 import test_utils
 
 
@@ -99,27 +98,53 @@ def debug_nondeterminism(b, c):
                     print(c.pair_MN[i])
                     break
 
-def test_pacmap_fashion_mnist(openml_datasets):
-    """Test PaCMAP with Fashion-MNIST dataset from OpenML."""
+def test_pacmap_fashion_mnist_full_seed(openml_datasets):
+    """Test PaCMAP with full Fashion-MNIST dataset from OpenML with deterministic seed."""
     # Load Fashion-MNIST from fixture
     fmnist, labels = openml_datasets["Fashion-MNIST"]
     fmnist = fmnist.reshape(fmnist.shape[0], -1)
-
-    # Use subset for faster testing
-    fmnist = fmnist[:1000]
-    labels = labels[:1000].astype(int)
+    labels = labels.astype(int)
 
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20)
     embedding = reducer.fit_transform(fmnist, init="pca")
-    test_utils.generate_figure(embedding, labels, 'test_fmnist_seed')
+    test_utils.generate_figure(embedding, labels, 'test_fmnist_full_seed')
+
+def test_pacmap_fashion_mnist_full_noseed(openml_datasets):
+    """Test PaCMAP with full Fashion-MNIST dataset from OpenML without seed."""
+    # Load Fashion-MNIST from fixture
+    fmnist, labels = openml_datasets["Fashion-MNIST"]
+    fmnist = fmnist.reshape(fmnist.shape[0], -1)
+    labels = labels.astype(int)
 
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)
     embedding = reducer.fit_transform(fmnist, init="pca")
-    test_utils.generate_figure(embedding, labels, 'test_fmnist_noseed')
+    test_utils.generate_figure(embedding, labels, 'test_fmnist_full_noseed')
 
 
-def test_pacmap_mnist(tmp_path, openml_datasets):
-    """Test PaCMAP with MNIST dataset from OpenML."""
+def test_pacmap_mnist_full_seed(openml_datasets):
+    """Test PaCMAP with full MNIST dataset from OpenML with deterministic seed."""
+    # Load MNIST from fixture
+    mnist, labels = openml_datasets["mnist_784"]
+    mnist = mnist.reshape(mnist.shape[0], -1)
+    labels = labels.astype(int)
+
+    reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20)
+    embedding = reducer.fit_transform(mnist, init="pca")
+    test_utils.generate_figure(embedding, labels, 'test_mnist_full_seed')
+
+def test_pacmap_mnist_full_noseed(openml_datasets):
+    """Test PaCMAP with full MNIST dataset from OpenML without seed."""
+    # Load MNIST from fixture
+    mnist, labels = openml_datasets["mnist_784"]
+    mnist = mnist.reshape(mnist.shape[0], -1)
+    labels = labels.astype(int)
+
+    reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, save_tree=True)
+    embedding = reducer.fit_transform(mnist, init="pca")
+    test_utils.generate_figure(embedding, labels, 'test_mnist_full_noseed')
+
+def test_pacmap_mnist_subset_save_load(tmp_path, openml_datasets):
+    """Test PaCMAP save/load with subset MNIST dataset from OpenML."""
     # Load MNIST from fixture
     mnist, labels = openml_datasets["mnist_784"]
     mnist = mnist.reshape(mnist.shape[0], -1)
@@ -128,37 +153,21 @@ def test_pacmap_mnist(tmp_path, openml_datasets):
     mnist = mnist[:1000]
     labels = labels[:1000].astype(int)
 
-    reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20)
-    embedding = reducer.fit_transform(mnist, init="pca")
-    test_utils.generate_figure(embedding, labels, 'test_mnist_seed')
-
-    plt.savefig("./test/output/test_mnist_seed.png")
-
     reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, save_tree=True)
     embedding = reducer.fit_transform(mnist, init="pca")
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
-    ax.axis('off')
-    ax.set_title('test_mnist_noseed')
-    plt.savefig("./test/output/test_mnist_noseed.png")
 
-    # Save and load
+    # Save
     save_path = tmp_path / "mnist_reducer"
     pacmap.save(reducer, str(save_path))
-    embedding = reducer.transform(mnist)
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
-    ax.axis('off')
-    ax.set_title('test_saveload')
-    plt.savefig("./test/output/test_saveload_before.png")
 
-    reducer = pacmap.load(str(save_path))
     embedding = reducer.transform(mnist)
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
-    ax.axis('off')
-    ax.set_title('test_saveload')
-    plt.savefig("./test/output/test_saveload_after.png")
+    test_utils.generate_figure(embedding, labels, 'test_saveload_subset_before')
+
+    # Load
+    reducer = pacmap.load(str(save_path))
+
+    embedding = reducer.transform(mnist)
+    test_utils.generate_figure(embedding, labels, 'test_saveload_subset_after')
 
     print("Figures have been generated successfully.")
 
@@ -166,6 +175,9 @@ def test_pacmap_mnist(tmp_path, openml_datasets):
 if __name__ == "__main__":
     # Backward compatibility - can still run as script
     import tempfile
+    from data_loader import load_datasets_from_fixture
+
+    openml_datasets = load_datasets_from_fixture()
 
     test_pacmap_initialization()
     test_pacmap_standard_dataset()
@@ -175,8 +187,11 @@ if __name__ == "__main__":
     test_pacmap_large_dataset()
     test_pacmap_same_dimensional_2d()
     test_pacmap_same_dimensional_3d()
-    test_pacmap_fashion_mnist()
+    test_pacmap_fashion_mnist_full_seed(openml_datasets)
+    test_pacmap_fashion_mnist_full_noseed(openml_datasets)
     with tempfile.TemporaryDirectory() as tmp_dir:
         from pathlib import Path
 
-        test_pacmap_mnist(Path(tmp_dir))
+        test_pacmap_mnist_full_seed(openml_datasets)
+        test_pacmap_mnist_full_noseed(openml_datasets)
+        test_pacmap_mnist_subset_save_load(Path(tmp_dir), openml_datasets)
