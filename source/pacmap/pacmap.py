@@ -1356,7 +1356,7 @@ class LocalMAP(PaCMAP):
     Maps high-dimensional dataset to a low-dimensional embedding with additional local graph adjustment.
     This class inherits the original PaCMAP Clas, and  it supports the the sklearn api. 
     For details of this method, please refer to our publication:
-    [ADD HERE!]
+    https://doi.org/10.1609/aaai.v39i20.35436
 
     Parameters
     ---------
