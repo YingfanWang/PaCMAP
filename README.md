@@ -1,4 +1,6 @@
-# PaCMAP [![Tests](https://github.com/YingfanWang/PaCMAP/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/YingfanWang/PaCMAP/actions/workflows/test.yml)
+# PaCMAP [![Tests](https://github.com/YingfanWang/PaCMAP/actions/workflows/test.yml/badge.svg?branch=master)][workflow-python-versions] [![PyPi](https://github.com/YingfanWang/PaCMAP/actions/workflows/publish.yml/badge.svg?branch=master)][workflow-publish]
+
+[workflow-publish]
 
 ## <a name='News'></a>News
 
@@ -224,4 +226,5 @@ For PaCMAP's performance on biological dataset, please check the following paper
 Please see the license file.
 
 <!-- Link -->
-   [workflow-python-versions]: .github/workflows/test.yml#L15
+   [workflow-python-versions]: .github/workflows/test.yml
+   [workflow-publish]: .github/workflows/publish.yml
