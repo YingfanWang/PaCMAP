@@ -21,7 +21,7 @@ def mnist_data(openml_datasets):
     return mnist, labels
 
 
-def setup_transform_test(mnist_data, n_splits, save_tree=False):
+def setup_transform_test(mnist_data, n_splits, save_index=False):
     """Setup test data and run PaCMAP transform"""
     # No-op indent for cleaning up diff.
     if True:
@@ -38,13 +38,13 @@ def setup_transform_test(mnist_data, n_splits, save_tree=False):
             MN_ratio=0.5,
             FP_ratio=2.0,
             random_state=20,
-            save_tree=save_tree,
+            save_index=save_index,
             verbose=True,
         )
         embedding = reducer.fit_transform(X_train)
         embedding_extra = (
             reducer.transform(X_test)
-            if save_tree
+            if save_index
             else reducer.transform(X_test, basis=X_train)
         )
         embedding_combined = np.concatenate((embedding, embedding_extra))
@@ -52,7 +52,7 @@ def setup_transform_test(mnist_data, n_splits, save_tree=False):
         embeddings = [embedding, embedding_extra, embedding_combined]
         labelset = [y_train, y_test, y]
         titles = [f"basis_{n}", f"extend_{n}", f"full_{n}"]
-        suffix = "_tree" if save_tree else ""
+        suffix = "_index" if save_index else ""
         generate_combined_figure(
             embeddings, labelset, titles, f"test_mnist_transform_{n}{suffix}"
         )

@@ -5,7 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "annoy>=1.11",
   "faiss-cpu>=1.11.0.post1",
   "numba>=0.57",
   "numpy>=1.20",

@@ -144,7 +144,7 @@ def test_pacmap_mnist(tmp_path, openml_datasets):
     plt.savefig("./test/output/test_mnist_seed.png")
 
     reducer = pacmap.PaCMAP(
-        n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, save_tree=True
+        n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, save_index=True
     )
     embedding = reducer.fit_transform(mnist, init="pca")
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))

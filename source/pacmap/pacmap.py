@@ -13,7 +13,7 @@ from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
-from annoy import AnnoyIndex
+import faiss
 from typing import Optional
 
 global _RANDOM_STATE
@@ -436,43 +436,48 @@ def print_verbose(msg, verbose, **kwargs):
 
 
 def generate_extra_pair_basis(
-    basis, X, n_neighbors, tree: AnnoyIndex, distance="euclidean", verbose=True
+    basis,
+    X,
+    n_neighbors,
+    index,
+    distance="euclidean",
+    verbose=True,
 ):
     """Generate pairs that connects the extra set of data to the fitted basis."""
     npr, dimp = X.shape
 
-    assert basis is not None or tree is not None, (
-        "If the annoyindex is not cached, the original dataset must be provided."
+    assert basis is not None or index is not None, (
+        "If the FAISS index is not cached, the original dataset must be provided."
     )
 
-    # Build the tree again if not cached
-    if tree is None:
+    # Build the index again if not cached
+    if index is None:
         n, dim = basis.shape
         assert dimp == dim, (
             "The dimension of the original dataset is different from the new one's."
         )
-        tree = AnnoyIndex(dim, metric=distance)
+        assert distance == "euclidean", "Only support Euclidean distance for now"
+        new_index = faiss.index_factory(
+            dim, "IVF32,Flat"
+        )  # TODO let the user pick the index specifics
         if _RANDOM_STATE is not None:
-            tree.set_seed(_RANDOM_STATE)
-        for i in range(n):
-            tree.add_item(i, basis[i, :])
-        tree.build(20)
+            new_index.cp.seed = _RANDOM_STATE
+            # new_index.pq.cp.seed = _RANDOM_STATE TODO fix other seeds
+        new_index.train(basis)
+        new_index.add(basis)
+        built_index = new_index
     else:
-        n = tree.get_n_items()
+        n = index.ntotal
+        built_index = index
 
     if n - 1 < n_neighbors:
         logger.warning(
             "Sample size is smaller than n_neighbors. n_neighbors will be reduced."
         )
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
-    n_neighbors = min(n_neighbors, n - 1)
-    nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
-    knn_distances = np.empty((npr, n_neighbors_extra), dtype=np.float32)
 
-    for i in range(npr):
-        nbrs[i, :], knn_distances[i, :] = tree.get_nns_by_vector(
-            X[i, :], n_neighbors_extra, include_distances=True
-        )
+    knn_distances, nbrs = built_index.search(X, n_neighbors_extra)
+    nbrs = nbrs.astype(np.int32)
 
     print_verbose("Found nearest neighbor", verbose)
 
@@ -503,23 +508,21 @@ def generate_pair(X, n_neighbors, n_MN, n_FP, distance="euclidean", verbose=True
             " requested. n_MN will be reduced."
         )
     n_MN = min(n_MN, n - 1)
-    tree = AnnoyIndex(dim, metric=distance)
+    index = faiss.index_factory(
+        dim, "IVF32,Flat"
+    )  # TODO let the user pick the index specifics
     if _RANDOM_STATE is not None:
-        tree.set_seed(_RANDOM_STATE)
-    for i in range(n):
-        tree.add_item(i, X[i, :])
-    tree.build(20)
+        index.cp.seed = _RANDOM_STATE
+        # index.pq.cp.seed = _RANDOM_STATE
+    index.train(X)
+    index.add(X)
 
     option = distance_to_option(distance=distance)
 
-    nbrs = np.zeros((n, n_neighbors_extra), dtype=np.int32)
-    knn_distances = np.empty((n, n_neighbors_extra), dtype=np.float32)
+    knn_distances, nbrs = index.search(X, n_neighbors_extra + 1)
+    knn_distances = knn_distances[:, 1:]
+    nbrs = nbrs[:, 1:].astype(np.int32)
 
-    for i in range(n):
-        nbrs_ = tree.get_nns_by_item(i, n_neighbors_extra + 1)
-        nbrs[i, :] = nbrs_[1:]
-        for j in range(n_neighbors_extra):
-            knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
     print_verbose("Found nearest neighbor", verbose)
     sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
     print_verbose("Calculated sigma", verbose)
@@ -534,7 +537,7 @@ def generate_pair(X, n_neighbors, n_MN, n_FP, distance="euclidean", verbose=True
         pair_FP = sample_FP_pair_deterministic(
             X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE
         )
-    return pair_neighbors, pair_MN, pair_FP, tree
+    return pair_neighbors, pair_MN, pair_FP, index
 
 
 def generate_pair_no_neighbors(
@@ -736,17 +739,17 @@ def save(instance, common_prefix: str):
     """
     Save PaCMAP instance to a location specified by the user.
 
-    PaCMAP use ANNOY for graph construction, which cannot be pickled. We provide
+    PaCMAP used to use ANNOY for graph construction, which cannot be pickled. We provide
     this function as an alternative to save a PaCMAP instance by storing the
     ANNOY instance and other parts of PaCMAP separately.
     """
     extra_info = ""
-    if instance.save_tree:
-        # Save the AnnoyIndex
-        instance.tree.save(f"{common_prefix}.ann")
-        temp_tree = instance.tree
-        instance.tree = None  # Remove the tree for pickle
-        extra_info = f", and the Annoy Index is saved at {common_prefix}.ann"
+    if instance.save_index:
+        # Save the FAISS index
+        faiss.write_index(instance.index, f"{common_prefix}.faiss")
+        temp_index = instance.index
+        instance.index = None
+        extra_info = f", and the FAISS Index is saved at {common_prefix}.faiss"
 
     # Save the other parts
     with open(f"{common_prefix}.pkl", "wb") as fp:
@@ -757,15 +760,14 @@ def save(instance, common_prefix: str):
     )
     print(f"To load the instance again, please do `pacmap.load({common_prefix})`.")
 
-    if instance.save_tree:
-        # Reload the AnnoyIndex
-        instance.tree = temp_tree  # reload the annoy index
-        assert instance.tree is not None
+    if instance.save_index:
+        # Reload the FAISS index
+        instance.index = temp_index  # reload the FAISS index
+        assert instance.index is not None
 
 
 def attach_index(reducer, index_path: str):
-    reducer.tree = AnnoyIndex(reducer.num_dimensions, reducer.distance)
-    reducer.tree.load(index_path)  # mmap the file
+    reducer.index = faiss.read_index(index_path)
     return reducer
 
 
@@ -794,7 +796,7 @@ def load(
     if index_path is not None:
         instance = attach_index(instance, index_path)
     else:  # attempt to load index from common path
-        index_path = f"{common_prefix}.ann"
+        index_path = f"{common_prefix}.faiss"
         if os.path.exists(index_path):
             instance = attach_index(instance, index_path)
 
@@ -863,8 +865,8 @@ class PaCMAP(BaseEstimator):
         Random state for the pacmap instance.
         Setting random state is useful for repeatability.
 
-    save_tree: bool, default=False
-        Whether to save the annoy index tree after finding the nearest neighbor pairs.
+    save_index: bool, default=False
+        Whether to save the FAISS index after finding the nearest neighbor pairs.
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
     """
 
@@ -899,7 +901,7 @@ class PaCMAP(BaseEstimator):
             450,
         ],
         random_state=None,
-        save_tree=False,
+        save_index=False,
     ):
         self.n_components = n_components
         self.n_neighbors = n_neighbors
@@ -916,7 +918,7 @@ class PaCMAP(BaseEstimator):
         self.apply_pca = apply_pca
         self.verbose = verbose
         self.intermediate = intermediate
-        self.save_tree = save_tree
+        self.save_index = save_index
         self.intermediate_snapshots = intermediate_snapshots
 
         global _RANDOM_STATE
@@ -1056,7 +1058,7 @@ class PaCMAP(BaseEstimator):
             self.verbose,
         )
         # Sample pairs
-        self.sample_pairs(X, self.save_tree)
+        self.sample_pairs(X, self.save_index)
         self.num_instances = X.shape[0]
         self.num_dimensions = X.shape[1]
         # Initialize and Optimize the embedding
@@ -1122,8 +1124,8 @@ class PaCMAP(BaseEstimator):
 
         basis: numpy.ndarray
             The original dataset that have already been applied during the `fit` or `fit_transform` process.
-            If `save_tree == False`, then the basis is required to reconstruct the ANNOY tree instance.
-            If `save_tree == True`, then it's unnecessary to provide the original dataset again.
+            If `save_index == False`, then the basis is required to reconstruct the FAISS index instance.
+            If `save_index == True`, then it's unnecessary to provide the original dataset again.
 
         init: str, optional
             One of ['pca', 'random']. Initialization of the embedding, default='pca'.
@@ -1151,7 +1153,7 @@ class PaCMAP(BaseEstimator):
             self.apply_pca,
             self.verbose,
         )
-        if basis is not None and self.tree is None:
+        if basis is not None and self.index is None:
             basis = np.copy(basis).astype(np.float32)
             basis = preprocess_X_new(
                 basis,
@@ -1165,7 +1167,7 @@ class PaCMAP(BaseEstimator):
             )
         # Sample pairs
         self.pair_XP = generate_extra_pair_basis(
-            basis, X, self.n_neighbors, self.tree, self.distance, self.verbose
+            basis, X, self.n_neighbors, self.index, self.distance, self.verbose
         )
         # Initialize and Optimize the embedding
         Y, intermediate_states = pacmap_fit(
@@ -1191,7 +1193,7 @@ class PaCMAP(BaseEstimator):
         else:
             return Y[self.embedding_.shape[0] :, :]
 
-    def sample_pairs(self, X, save_tree):
+    def sample_pairs(self, X, save_index):
         """
         Sample PaCMAP pairs from the dataset.
 
@@ -1200,13 +1202,13 @@ class PaCMAP(BaseEstimator):
         X: numpy.ndarray
             The high-dimensional dataset that is being projected.
 
-        save_tree: bool
-            Whether to save the annoy index tree after finding the nearest neighbor pairs.
+        save_index: bool
+            Whether to save the FAISS index after finding the nearest neighbor pairs.
         """
         # Creating pairs
         print_verbose("Finding pairs", self.verbose)
         if self.pair_neighbors is None:
-            self.pair_neighbors, self.pair_MN, self.pair_FP, self.tree = generate_pair(
+            self.pair_neighbors, self.pair_MN, self.pair_FP, self.index = generate_pair(
                 X, self.n_neighbors, self.n_MN, self.n_FP, self.distance, self.verbose
             )
             print_verbose("Pairs sampled successfully.", self.verbose)
@@ -1230,8 +1232,8 @@ class PaCMAP(BaseEstimator):
         else:
             print_verbose("Using stored pairs.", self.verbose)
 
-        if not save_tree:
-            self.tree = None
+        if not save_index:
+            self.index = None
 
         return self
 
@@ -1535,8 +1537,8 @@ class LocalMAP(PaCMAP):
         Random state for the pacmap instance.
         Setting random state is useful for repeatability.
 
-    save_tree: bool, default=False
-        Whether to save the annoy index tree after finding the nearest neighbor pairs.
+    save_index: bool, default=False
+        Whether to save the FAISS index after finding the nearest neighbor pairs.
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
 
     low_dist_thres [NEW FOR LocalMAP]: float, default=10
@@ -1577,7 +1579,7 @@ class LocalMAP(PaCMAP):
             450,
         ],
         random_state=None,
-        save_tree=False,
+        save_index=False,
         low_dist_thres=10,
     ):
         super().__init__(
@@ -1596,7 +1598,7 @@ class LocalMAP(PaCMAP):
             intermediate,
             intermediate_snapshots,
             random_state,
-            save_tree,
+            save_index,
         )
         self.low_dist_thres = low_dist_thres
 
@@ -1655,7 +1657,7 @@ class LocalMAP(PaCMAP):
             self.verbose,
         )
         # Sample pairs
-        self.sample_pairs(X, self.save_tree)
+        self.sample_pairs(X, self.save_index)
         self.num_instances = X.shape[0]
         self.num_dimensions = X.shape[1]
         # Initialize and Optimize the embedding

@@ -31,7 +31,7 @@
 - 0.7.0
 
   Now officially supports the `save` and `load` methods.
-  `pacmap.save(reducer, common_prefix)` will save the PaCMAP instance (and the AnnoyIndex if `save_tree=True`) to the location specified by the `common_prefix`. The PaCMAP instance will be named as `{common_prefix}.pkl` and the Annoy Index will be named as `{common_prefix}.ann`. Similarly, `pacmap.load(common_prefix)` loads the saved PaCMAP instance.
+  `pacmap.save(reducer, common_prefix)` will save the PaCMAP instance (and the FAISS index if `save_index=True`) to the location specified by the `common_prefix`. The PaCMAP instance will be named as `{common_prefix}.pkl` and the FAISS Index will be named as `{common_prefix}.faiss`. Similarly, `pacmap.load(common_prefix)` loads the saved PaCMAP instance.
 
 - 0.6.0
 

@@ -16,11 +16,11 @@ def iris_data():
     return iris["data"], iris["target"]
 
 
-def test_iris_transform_with_tree(iris_data):
-    """Test PaCMAP transform functionality with save_tree=True."""
+def test_iris_transform_with_index(iris_data):
+    """Test PaCMAP transform functionality with save_index=True."""
     iris, label = iris_data
 
-    reducer = pacmap.PaCMAP(save_tree=True, verbose=True)
+    reducer = pacmap.PaCMAP(save_index=True, verbose=True)
     embedding = reducer.fit_transform(iris)
     embedding_extra = reducer.transform(iris)
 
@@ -34,7 +34,7 @@ def test_iris_transform_with_tree(iris_data):
     y = np.concatenate((label, label))
     labelset = [label, label, y]
     titles = [f"basis", f"extend", f"full"]
-    generate_combined_figure(embeddings, labelset, titles, f"test_iris_transform_tree")
+    generate_combined_figure(embeddings, labelset, titles, f"test_iris_transform_index")
 
     # Test pair relationships
     for i in range(10):
@@ -49,11 +49,11 @@ def test_iris_transform_with_tree(iris_data):
         print(y[xp0], y[xp1], dist)
 
 
-def test_iris_transform_without_tree(iris_data):
-    """Test PaCMAP transform functionality with save_tree=False."""
+def test_iris_transform_without_index(iris_data):
+    """Test PaCMAP transform functionality with save_index=False."""
     iris, label = iris_data
 
-    reducer = pacmap.PaCMAP(save_tree=False, verbose=True)
+    reducer = pacmap.PaCMAP(save_index=False, verbose=True)
     embedding = reducer.fit_transform(iris)
     embedding_extra = reducer.transform(iris, basis=iris)
 

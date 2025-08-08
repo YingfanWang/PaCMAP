@@ -3,12 +3,6 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "annoy"
-version = "1.17.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/07/38/e321b0e05d8cc068a594279fb7c097efb1df66231c295d482d7ad51b6473/annoy-1.17.3.tar.gz", hash = "sha256:9cbfebefe0a5f843eba29c6be4c84d601f4f41ad4ded0486f1b88c3b07739c15", size = 647460, upload-time = "2023-06-14T16:37:34.152Z" }
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -360,7 +354,6 @@ name = "pacmap"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "annoy" },
     { name = "faiss-cpu" },
     { name = "numba" },
     { name = "numpy" },
@@ -377,7 +370,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "annoy", specifier = ">=1.11" },
     { name = "faiss-cpu", specifier = ">=1.11.0.post1" },
     { name = "numba", specifier = ">=0.57" },
     { name = "numpy", specifier = ">=1.20" },
