@@ -16,7 +16,7 @@ y = np.load("../data/coil_20_labels.npy", allow_pickle=True)
 
 n, dim = X.shape
 n_neighbors = 10
-tree = AnnoyIndex(dim, metric='euclidean')
+tree = AnnoyIndex(dim, metric="euclidean")
 for i in range(n):
     tree.add_item(i, X[i, :])
 tree.build(20)
@@ -33,15 +33,19 @@ X = X.astype(np.float32)
 scaled_dist = scaled_dist.astype(np.float32)
 
 # make sure n_neighbors is the same number you want when fitting the data
-pair_neighbors = pacmap.sample_neighbors_pair(X, scaled_dist, nbrs, np.int32(n_neighbors))
+pair_neighbors = pacmap.sample_neighbors_pair(
+    X, scaled_dist, nbrs, np.int32(n_neighbors)
+)
 
 # initializing the pacmap instance
 # feed the pair_neighbors into the instance
-embedding = pacmap.PaCMAP(n_components=2,
-                          n_neighbors=n_neighbors,
-                          MN_ratio=0.5,
-                          FP_ratio=2.0,
-                          pair_neighbors=pair_neighbors)
+embedding = pacmap.PaCMAP(
+    n_components=2,
+    n_neighbors=n_neighbors,
+    MN_ratio=0.5,
+    FP_ratio=2.0,
+    pair_neighbors=pair_neighbors,
+)
 
 # fit the data (The index of transformed data corresponds to the index of the original data)
 X_transformed = embedding.fit_transform(X, init="pca")

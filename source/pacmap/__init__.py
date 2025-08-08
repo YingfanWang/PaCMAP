@@ -3,7 +3,7 @@ from .pacmap import PaCMAP, sample_neighbors_pair, LocalMAP
 from importlib.metadata import version, PackageNotFoundError
 
 try:
-    __version__ = version('pacmap')
+    __version__ = version("pacmap")
 except PackageNotFoundError:
     __version__ = "unknown"
 

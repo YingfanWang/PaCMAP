@@ -1,6 +1,6 @@
-'''
+"""
 A script that tests the transform feature of pacmap
-'''
+"""
 
 import pacmap
 import numpy as np
@@ -33,18 +33,18 @@ def test_iris_transform_with_tree(iris_data):
     embeddings = [embedding, embedding_extra, embedding_combined]
     y = np.concatenate((label, label))
     labelset = [label, label, y]
-    titles = [f'basis', f'extend', f'full']
-    generate_combined_figure(embeddings, labelset, titles, f'test_iris_transform_tree')
+    titles = [f"basis", f"extend", f"full"]
+    generate_combined_figure(embeddings, labelset, titles, f"test_iris_transform_tree")
 
     # Test pair relationships
     for i in range(10):
-        xp0 = reducer.pair_XP[i*100][0]
-        xp1 = reducer.pair_XP[i*100][1]
-        dist = np.linalg.norm(iris[xp0-len(iris)] - iris[xp1])
+        xp0 = reducer.pair_XP[i * 100][0]
+        xp1 = reducer.pair_XP[i * 100][1]
+        dist = np.linalg.norm(iris[xp0 - len(iris)] - iris[xp1])
         print(y[xp0], y[xp1], dist)
     for i in range(10):
-        xp0 = reducer.pair_neighbors[i*100][0]
-        xp1 = reducer.pair_neighbors[i*100][1]
+        xp0 = reducer.pair_neighbors[i * 100][0]
+        xp1 = reducer.pair_neighbors[i * 100][1]
         dist = np.linalg.norm(iris[xp0] - iris[xp1])
         print(y[xp0], y[xp1], dist)
 
@@ -66,18 +66,18 @@ def test_iris_transform_without_tree(iris_data):
     embeddings = [embedding, embedding_extra, embedding_combined]
     y = np.concatenate((label, label))
     labelset = [label, label, y]
-    titles = [f'basis', f'extend', f'full']
-    generate_combined_figure(embeddings, labelset, titles, f'test_iris_transform')
+    titles = [f"basis", f"extend", f"full"]
+    generate_combined_figure(embeddings, labelset, titles, f"test_iris_transform")
 
     # Test pair relationships
     for i in range(10):
-        xp0 = reducer.pair_XP[i*100][0]
-        xp1 = reducer.pair_XP[i*100][1]
-        dist = np.linalg.norm(iris[xp0-len(iris)] - iris[xp1])
+        xp0 = reducer.pair_XP[i * 100][0]
+        xp1 = reducer.pair_XP[i * 100][1]
+        dist = np.linalg.norm(iris[xp0 - len(iris)] - iris[xp1])
         print(y[xp0], y[xp1], dist)
     for i in range(10):
-        xp0 = reducer.pair_neighbors[i*100][0]
-        xp1 = reducer.pair_neighbors[i*100][1]
+        xp0 = reducer.pair_neighbors[i * 100][0]
+        xp1 = reducer.pair_neighbors[i * 100][1]
         dist = np.linalg.norm(iris[xp0] - iris[xp1])
         print(y[xp0], y[xp1], dist)
 

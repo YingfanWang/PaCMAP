@@ -1,10 +1,10 @@
-'''
+"""
 A script that demonstrates the transform feature of pacmap.
 The MNIST dataset will be separated into n-folds, where (n-1) folds will be used
 to fit a PaCMAP instance, and the last fold will be used as a test set.
 We use the transform feature to map the test set into the already constructed
 embedding space.
-'''
+"""
 
 import pacmap
 import numpy as np
@@ -27,7 +27,14 @@ for n in n_splits:
         break
 
     # Initialize the instance
-    reducer = pacmap.PaCMAP(n_components=2, n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0, random_state=20, save_tree=False)
+    reducer = pacmap.PaCMAP(
+        n_components=2,
+        n_neighbors=10,
+        MN_ratio=0.5,
+        FP_ratio=2.0,
+        random_state=20,
+        save_tree=False,
+    )
 
     # Fit the training set
     embedding = reducer.fit_transform(X_train)
@@ -40,5 +47,7 @@ for n in n_splits:
     y = np.concatenate((y_train, y_test))
     embeddings = [embedding, embedding_test, embedding_combined]
     labelset = [y_train, y_test, y]
-    titles = ['Training', 'Test', 'Combined']
-    demo_utils.generate_combined_figure(embeddings, labelset, titles, f'mnist_transform_{n}')
+    titles = ["Training", "Test", "Combined"]
+    demo_utils.generate_combined_figure(
+        embeddings, labelset, titles, f"mnist_transform_{n}"
+    )

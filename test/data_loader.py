@@ -23,6 +23,7 @@ def load_datasets_from_fixture(path=None):
     if path is None:
         # Get path relative to this file
         from pathlib import Path
+
         current_dir = Path(__file__).parent
         path = current_dir / "fixtures" / "datasets.json"
 
@@ -30,6 +31,12 @@ def load_datasets_from_fixture(path=None):
         datasets = json.load(f)
 
     return {
-        d["name"]: fetch_openml(d["name"], version=d["version"], return_X_y=True, parser="pandas", as_frame=False)
+        d["name"]: fetch_openml(
+            d["name"],
+            version=d["version"],
+            return_X_y=True,
+            parser="pandas",
+            as_frame=False,
+        )
         for d in datasets
     }

@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 
 def generate_figure(embedding, labels, title):
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap='Spectral')
-    ax.axis('off')
+    ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=labels, cmap="Spectral")
+    ax.axis("off")
     ax.set_title(title)
     plt.savefig(f"./{title}.png")
 
@@ -21,9 +21,9 @@ def generate_combined_figure(embeddings, labels, titles, theme_title):
         embedding = embeddings[i]
         label = labels[i]
         title = titles[i]
-        ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=label, cmap='Spectral')
-        ax.axis('off')
+        ax.scatter(embedding[:, 0], embedding[:, 1], s=0.5, c=label, cmap="Spectral")
+        ax.axis("off")
         ax.set_title(title)
     for i in range(3 * n_rows - len_subfigs):
-        axes[-i - 1].axis('off')
+        axes[-i - 1].axis("off")
     plt.savefig(f"./{theme_title}.png")
