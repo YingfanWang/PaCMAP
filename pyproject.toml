@@ -1,8 +1,22 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[project]
+name = "pacmap"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "annoy>=1.11",
+  "numba>=0.57",
+  "numpy>=1.20",
+  "scikit-learn>=0.20",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
@@ -10,9 +24,16 @@ testpaths = ["test"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = [
-    "--verbose",
-    # Use short form of tracebacks.
-    "--tb=short",
-    # Throw errors for typos in test markers.
-    "--strict-markers",
+  "--verbose",
+  # Use short form of tracebacks.
+  "--tb=short",
+  # Throw errors for typos in test markers.
+  "--strict-markers",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.5",
+    "pandas>=2.3.1",
+    "pytest>=8.4.1",
 ]
