@@ -738,32 +738,12 @@ def pacmap_fit(
 def save(instance, common_prefix: str):
     """
     Save PaCMAP instance to a location specified by the user.
-
-    PaCMAP used to use ANNOY for graph construction, which cannot be pickled. We provide
-    this function as an alternative to save a PaCMAP instance by storing the
-    ANNOY instance and other parts of PaCMAP separately.
     """
-    extra_info = ""
-    if instance.save_index:
-        # Save the FAISS index
-        faiss.write_index(instance.index, f"{common_prefix}.faiss")
-        temp_index = instance.index
-        instance.index = None
-        extra_info = f", and the FAISS Index is saved at {common_prefix}.faiss"
-
-    # Save the other parts
     with open(f"{common_prefix}.pkl", "wb") as fp:
         pkl.dump(instance, fp)
 
-    print(
-        f"The PaCMAP instance is successfully saved at {common_prefix}.pkl{extra_info}."
-    )
+    print(f"The PaCMAP instance is successfully saved at {common_prefix}.pkl.")
     print(f"To load the instance again, please do `pacmap.load({common_prefix})`.")
-
-    if instance.save_index:
-        # Reload the FAISS index
-        instance.index = temp_index  # reload the FAISS index
-        assert instance.index is not None
 
 
 def attach_index(reducer, index_path: str):
@@ -774,7 +754,6 @@ def attach_index(reducer, index_path: str):
 def load(
     common_prefix: Optional[str] = None,
     reducer_path: Optional[str] = None,
-    index_path: Optional[str] = None,
 ):
     """
     Load PaCMAP instance from a location specified by the user.
@@ -792,13 +771,6 @@ def load(
     else:
         with open(f"{common_prefix}.pkl", "rb") as fp:
             instance = pkl.load(fp)
-
-    if index_path is not None:
-        instance = attach_index(instance, index_path)
-    else:  # attempt to load index from common path
-        index_path = f"{common_prefix}.faiss"
-        if os.path.exists(index_path):
-            instance = attach_index(instance, index_path)
 
     return instance
 
