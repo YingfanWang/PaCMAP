@@ -11,8 +11,10 @@ import pickle as pkl
 
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
+from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
 from annoy import AnnoyIndex
+from typing import Optional
 
 global _RANDOM_STATE
 _RANDOM_STATE = None
@@ -360,7 +362,7 @@ def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim, low_dim):
         xmin = 0  # placeholder
         xmax = 0  # placeholder
         xmean = np.mean(X, axis=0)
-        X -= np.mean(X, axis=0)
+        X -= xmean
         tsvd = TruncatedSVD(n_components=100, random_state=seed)
         X = tsvd.fit_transform(X)
         pca_solution = True
@@ -746,15 +748,40 @@ def save(instance, common_prefix: str):
         assert instance.tree is not None
 
 
-def load(common_prefix: str):
+def attach_index(reducer, index_path: str):
+    reducer.tree = AnnoyIndex(reducer.num_dimensions, reducer.distance)
+    reducer.tree.load(index_path)  # mmap the file
+    return reducer
+
+
+def load(
+        common_prefix: Optional[str] = None,
+        reducer_path: Optional[str] = None,
+        index_path: Optional[str] = None,
+    ):
     '''
     Load PaCMAP instance from a location specified by the user.
+    If the index and reducer are saved with `common_prefix`,
+    this will load both into the returned object.
+
+    Otherwise, pass `index_path` to attach any saved index and
+    `reducer_path` to load the saved associated reducer object.
+
+    Note: only one of `common_prefix` or `reducer_path` is needed.
     '''
-    with open(f"{common_prefix}.pkl", "rb") as fp:
-        instance = pkl.load(fp)
-    if os.path.exists(f"{common_prefix}.ann"):
-        instance.tree = AnnoyIndex(instance.num_dimensions, instance.distance)
-        instance.tree.load(f"{common_prefix}.ann")  # mmap the file
+    if reducer_path is not None:
+        with open(reducer_path, "rb") as fp:
+            instance = pkl.load(fp)
+    else:
+        with open(f"{common_prefix}.pkl", "rb") as fp:
+            instance = pkl.load(fp)
+
+    if index_path is not None:
+        instance = attach_index(instance, index_path)
+    else:  # attempt to load index from common path
+        index_path = f"{common_prefix}.ann"
+        if os.path.exists(index_path):
+            instance = attach_index(instance, index_path)
 
     return instance
 
@@ -876,6 +903,13 @@ class PaCMAP(BaseEstimator):
             self.random_state = 0
             _RANDOM_STATE = None  # Reset random state
 
+        # Raise error on initialization with an incorrect distance metric.
+        VALID_ANNOY_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
+        if self.distance not in VALID_ANNOY_METRICS:
+            raise NotImplementedError(
+                "`distance` must be one of {}".format(", ".join(VALID_ANNOY_METRICS))
+            )
+
         if self.n_components < 1:
             raise ValueError(
                 "The number of projection dimensions must be at least 1."
@@ -913,18 +947,27 @@ class PaCMAP(BaseEstimator):
                             " requested. n_MN will be reduced.")
         self.n_MN = min(self.n_MN, n - 1)
 
+
         if self.n_neighbors + self.n_MN + self.n_FP >= n:
             logger.warning("Sample size is smaller than the total number of assigned points, n_neighbors, n_MN, n_FP would be reorganized")
             self.n_neighbors = int(n / ( 1 + self.MN_ratio + self.FP_ratio))
             self.n_MN = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.MN_ratio)
             self.n_FP = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.FP_ratio)
 
+
+        disable_checks = os.environ.get("PACMAP_DISABLE_CHECKS", "").lower() in {"1", "true", "yes"}
         if self.n_neighbors < 1:
-            raise ValueError(
-                "The number of nearest neighbors can't be less than 1")
+            msg = "The number of nearest neighbors can't be less than 1"
+            if disable_checks:
+                logger.warning(msg)
+            else:
+                raise ValueError(msg)
         if self.n_FP < 1:
-            raise ValueError(
-                "The number of further points can't be less than 1")
+            msg = "The number of further points can't be less than 1"
+            if disable_checks:
+                logger.warning(msg)
+            else:
+                raise ValueError(msg)
 
     def fit(self, X, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
@@ -1046,6 +1089,9 @@ class PaCMAP(BaseEstimator):
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.
         '''
 
+        # If the estimator is not fitted, then raise NotFittedError
+        check_is_fitted(estimator=self, attributes="embedding_")
+
         # Preprocess the data
         X = np.copy(X).astype(np.float32)
         X = preprocess_X_new(X, self.distance, self.xmin, self.xmax,
@@ -1063,14 +1109,15 @@ class PaCMAP(BaseEstimator):
                                                  self.distance,
                                                  self.verbose
                                                  )
-        if not save_pairs:
-            self.pair_XP = None
-
         # Initialize and Optimize the embedding
         Y, intermediate_states = pacmap_fit(X, self.embedding_, self.n_components, self.pair_XP, self.lr,
                                             self.num_iters, init, self.verbose,
                                             self.intermediate, self.intermediate_snapshots,
                                             self.pca_solution, self.tsvd_transformer)
+
+        if not save_pairs:
+            self.pair_XP = None
+
         if self.intermediate:
             return intermediate_states
         else:
@@ -1153,10 +1200,14 @@ def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres
         result[i] = j
     return result
 
-@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4[:,:],i4,i4, f4[:,:], f4)", parallel=True, nogil=True, cache=True)
-def sample_FP_pair_nearby(X, pair_neighbors, old_pair_FP, n_neighbors, n_FP, Y, low_dist_thres):
+@numba.njit("i4[:,:](f4[:,:],i4[:,:],i4[:,:], f4[:,:], f4)", parallel=True, nogil=True, cache=True)
+def sample_FP_pair_nearby(X, pair_neighbors, old_pair_FP, Y, low_dist_thres):
     '''Resample Further pairs for local graph adjustment'''
     n = X.shape[0]
+
+    n_neighbors = pair_neighbors.shape[0]//n
+    n_FP = old_pair_FP.shape[0]//n
+
     pair_FP = np.empty((n * n_FP, 2), dtype=np.int32)
     for i in numba.prange(n):
         FP_index = sample_FP_nearby(
@@ -1244,9 +1295,6 @@ def localmap(
     start_time = time.time()
     n, _ = X.shape
 
-    n_neighbors = pair_neighbors.shape[0]//n
-    n_FP = pair_FP.shape[0]//n
-
     if intermediate:
         intermediate_states = np.empty(
             (len(inter_snapshots), n, n_dims), dtype=np.float32)
@@ -1304,7 +1352,7 @@ def localmap(
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
         if (itr > num_iters[0] + num_iters[1]) and (itr % 10 == 0):
-            pair_FP = sample_FP_pair_nearby(X, pair_neighbors, pair_FP, n_neighbors, n_FP, Y, low_dist_thres)
+            pair_FP = sample_FP_pair_nearby(X, pair_neighbors, pair_FP, Y, low_dist_thres)
 
         if intermediate:
             if (itr + 1) == inter_snapshots[itr_ind]:
@@ -1325,7 +1373,7 @@ class LocalMAP(PaCMAP):
     Maps high-dimensional dataset to a low-dimensional embedding with additional local graph adjustment.
     This class inherits the original PaCMAP Clas, and  it supports the the sklearn api. 
     For details of this method, please refer to our publication:
-    [ADD HERE!]
+    https://doi.org/10.1609/aaai.v39i20.35436
 
     Parameters
     ---------

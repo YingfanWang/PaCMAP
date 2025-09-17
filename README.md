@@ -1,4 +1,4 @@
-# PaCMAP
+# PaCMAP [![Tests](https://github.com/YingfanWang/PaCMAP/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/YingfanWang/PaCMAP/actions/workflows/test.yml)
 
 ## <a name='News'></a>News
 
@@ -165,6 +165,28 @@ We have provided the code we use to run experiment for better reproducibility. T
 
 After downloading the code, you may need to specify some of the paths in the script to make them fully functional.
 
+## <a name='Testing'></a>Testing
+
+We have a suite of tests. We run these tests on all pull requests, and every commit to `master` branch.
+
+We test against several version of Python. (See [`.github/workflows/test.yml`][workflow-python-versions] for our currently tested versions.)
+
+If you are contributing code, please confirm our tests pass, and consider adding your own for any new functionality.
+
+You may run the test suite like so:
+
+```sh
+# Clean up past outputs (plots will be DELETED),
+# and uninstall the public package version of pacmap.
+make clean
+
+# Install the development dependencies.
+make install-dev
+
+# Run the test suite against your local version of the codebase.
+make test
+```
+
 ## <a name='Citation'></a>Citation
 
 If you used PaCMAP in your publication, or you used the implementation in this repository, please cite our paper using the following bibtex:
@@ -200,3 +222,6 @@ For PaCMAP's performance on biological dataset, please check the following paper
 ## <a name='License'></a>License
 
 Please see the license file.
+
+<!-- Link -->
+   [workflow-python-versions]: .github/workflows/test.yml#L15

@@ -1,5 +1,14 @@
 # Release Notes
 
+- 0.8.0
+  Add `LocalMAP` algorithm to release.
+
+- 0.7.6
+  Fix the problem that `fit_transform` may hang for low number of samples (issue80).
+
+- 0.7.5
+  Remove `setuptools` as dependency.
+
 - 0.7.4
   Fix the problem that `sample_FP_pair` and `sample_FP_pair_deterministic` may create
   FP pairs on NN.

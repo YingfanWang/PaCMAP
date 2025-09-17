@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main , master]
+  pull_request:
+    branches: [ main , master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.10", "3.13"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt', 'requirements-test.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-
+
+    - name: Cache datasets
+      uses: actions/cache@v4
+      with:
+        path: ~/scikit_learn_data
+        key: ${{ runner.os }}-datasets-${{ hashFiles('test/fixtures/datasets.json') }}
+        restore-keys: |
+          ${{ runner.os }}-datasets-
+
+    - name: Install dependencies
+      run: make install-dev
+
+    - name: Run tests
+      run: make test
