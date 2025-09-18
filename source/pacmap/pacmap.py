@@ -489,6 +489,13 @@ def generate_pair(
         logger.warning("Sample size is smaller than number of mid-near pairs"
                         " requested. n_MN will be reduced.")
     n_MN = min(n_MN, n - 1)
+
+    if n_neighbors + n_MN + n_FP >= n:
+        logger.warning("Sample size is smaller than the total number of assigned points, n_neighbors, n_MN, n_FP would be reorganized")
+        self.n_neighbors = int(n / ( 1 + self.MN_ratio + self.FP_ratio))
+        self.n_MN = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.MN_ratio)
+        self.n_FP = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.FP_ratio)
+    
     tree = AnnoyIndex(dim, metric=distance)
     if _RANDOM_STATE is not None:
         tree.set_seed(_RANDOM_STATE)
@@ -940,6 +947,14 @@ class PaCMAP(BaseEstimator):
                             " requested. n_MN will be reduced.")
         self.n_MN = min(self.n_MN, n - 1)
 
+
+        if self.n_neighbors + self.n_MN + self.n_FP >= n:
+            logger.warning("Sample size is smaller than the total number of assigned points, n_neighbors, n_MN, n_FP would be reorganized")
+            self.n_neighbors = int(n / ( 1 + self.MN_ratio + self.FP_ratio))
+            self.n_MN = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.MN_ratio)
+            self.n_FP = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.FP_ratio)
+
+
         disable_checks = os.environ.get("PACMAP_DISABLE_CHECKS", "").lower() in {"1", "true", "yes"}
         if self.n_neighbors < 1:
             msg = "The number of nearest neighbors can't be less than 1"
@@ -1163,6 +1178,7 @@ def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres
         count = 0
         while reject_sample:
             j = np.random.randint(maximum)
+            count += 1
             if j == self_ind:
                 continue
             for k in range(i):
@@ -1177,7 +1193,7 @@ def sample_FP_nearby(n_samples, maximum, reject_ind, self_ind, Y, low_dist_thres
                         continue
                     else:
                         reject_sample = False
-            count += 1
+            
             if count > 100:
                 j = -1
                 reject_sample = False
