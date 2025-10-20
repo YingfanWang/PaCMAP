@@ -368,8 +368,9 @@ def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim, low_dim):
         pca_solution = True
         print_verbose("Applied PCA, the dimensionality becomes 100", verbose)
     else:
-        xmin, xmax = (np.min(X), np.max(X))
+        xmin = np.min(X)
         X -= xmin
+        xmax = np.max(X)
         X /= xmax
         xmean = np.mean(X, axis=0)
         X -= xmean
