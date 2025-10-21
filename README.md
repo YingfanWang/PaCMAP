@@ -70,6 +70,34 @@ wish to use `numba >= 0.57`.
 conda install -c conda-forge python-annoy
 pip install pacmap
 ```
+#### <a name='InstallingAnnoyonWindows'></a>Installing `annoy` on Windows
+Alternatively, if you're using Microsoft Windows and can't install the Microsoft Visual C++ (MSVC) Build Tools due to lacking the appropriate permissions, but have a C++ compiler through Minimalist GNU for Windows (MinGW) - for instance, from an `RTools` installation - you can try guiding `setuptools` to use MinGW instead of MSVC. The approach involves creating a `pydistutils.cfg` file to set MinGW as the default C++ compiler for Python package builds, bypassing the need for MSVC.
+
+Here are the steps:
+
+1.  **Create a `pydistutils.cfg` file with the following content:**
+    ```ini
+    [build]
+    compiler=mingw32
+
+    [build_ext]
+    compiler=mingw32
+    ```
+
+2.  **Save this file in your user's home directory.** 
+This is usually `%USERPROFILE%\pydistutils.cfg` (e.g., `C:\Users\YourUserName\pydistutils.cfg`).
+
+3.  **Important: Ensure MinGW's `bin` directory is added to your system's PATH environment variable.**
+    This allows the system to find the `gcc`/`g++` executables from your MinGW installation. For example, if you're using RTools, this path might be something like `C:\Rtools45\mingw64\bin` (the exact path depends on your installation directory).
+
+4.  **Download and Install `annoy`:**
+    Once the `pydistutils.cfg` file is in place and MinGW is in your PATH, run the following in the command prompt:
+    ```shell
+    git clone https://github.com/spotify/annoy
+    cd annoy
+    set ANNOY_COMPILER_ARGS=-std=c++14,-O3,-ffast-math,-fno-associative-math,-DANNOYLIB_MULTITHREADED_BUILD,-D_CRT_SECURE_NO_WARNINGS,-fpermissive
+    pip install .
+    ```   
 
 ## <a name='Usage'></a>Usage
 
