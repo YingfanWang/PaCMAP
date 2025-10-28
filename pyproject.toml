@@ -1,9 +1,44 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[project]
+name = "pacmap"
+version = "0.8.1"
+authors = [
+    {name = "Yingfan Wang", email = "yingfan.wang@duke.edu"},
+    {name = "Haiyang Huang"},
+    {name = "Cynthia Rudin"},
+    {name = "Yaron Shaposhnik"},
 ]
-build-backend = "setuptools.build_meta"
+description = "The official implementation for PaCMAP: Pairwise Controlled Manifold Approximation Projection"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+]
+
+dependencies = [
+    "scikit-learn>=0.20",
+    "numba>=0.57",
+    "annoy~=1.17.3",
+    "numpy>=1.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/YingfanWang/PaCMAP"
+"Bug Tracker" = "https://github.com/YingfanWang/PaCMAP/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = ["source/pacmap"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["source/pacmap"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
@@ -15,4 +50,11 @@ addopts = [
     "--tb=short",
     # Throw errors for typos in test markers.
     "--strict-markers",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.7.5",
+    "pandas>=2.0.3",
+    "pytest>=8.3.5",
 ]
