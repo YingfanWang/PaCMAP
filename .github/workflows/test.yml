@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
+        # May be issues on some environments with Python 3.10.
+        # See: https://github.com/YingfanWang/PaCMAP/issues/134
         python-version: ["3.8", "3.10", "3.13"]
 
     steps:
