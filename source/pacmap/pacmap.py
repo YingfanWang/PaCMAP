@@ -3,18 +3,27 @@ import logging
 import math
 import os
 import time
+import pickle as pkl
+from typing import Optional
 
 import numba
-
 import numpy as np
-import pickle as pkl
-
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
 from annoy import AnnoyIndex
-from typing import Optional
+
+# Optional imports for faiss and voyager
+try:
+    import faiss
+except ImportError:
+    faiss = None
+
+try:
+    import voyager
+except ImportError:
+    voyager = None
 
 global _RANDOM_STATE
 _RANDOM_STATE = None
@@ -423,40 +432,127 @@ def print_verbose(msg, verbose, **kwargs):
 def generate_extra_pair_basis(basis,
                               X,
                               n_neighbors,
-                              tree: AnnoyIndex,
+                              tree,
                               distance='euclidean',
-                              verbose=True
+                              verbose=True,
+                              knn_backend='annoy'
                               ):
     '''Generate pairs that connects the extra set of data to the fitted basis.
     '''
     npr, dimp = X.shape
 
-    assert (basis is not None or tree is not None), "If the annoyindex is not cached, the original dataset must be provided."
+    assert (basis is not None or tree is not None), "If the index is not cached, the original dataset must be provided."
 
     # Build the tree again if not cached
     if tree is None:
         n, dim = basis.shape
         assert dimp == dim, "The dimension of the original dataset is different from the new one's."
-        tree = AnnoyIndex(dim, metric=distance)
-        if _RANDOM_STATE is not None:
-            tree.set_seed(_RANDOM_STATE)
-        for i in range(n):
-            tree.add_item(i, basis[i, :])
-        tree.build(20)
-    else:
+        
+        if knn_backend == 'annoy':
+            tree = AnnoyIndex(dim, metric=distance)
+            if _RANDOM_STATE is not None:
+                tree.set_seed(_RANDOM_STATE)
+            for i in range(n):
+                tree.add_item(i, basis[i, :])
+            tree.build(20)
+        
+        elif knn_backend == 'faiss':
+            if faiss is None:
+                raise ImportError("faiss is not installed.")
+            
+            if _RANDOM_STATE is not None:
+                faiss.omp_set_num_threads(1)
+            if distance == "euclidean":
+                # For Faiss, we typically use HNSW for approx search
+                tree = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L2) # 32 links per node
+                tree.add(basis)
+            elif distance == "angular":
+                tree = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_INNER_PRODUCT)
+                basis_norm = basis.copy()
+                faiss.normalize_L2(basis_norm)
+                tree.add(basis_norm)
+            elif distance == "manhattan":
+                tree = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L1)
+                tree.add(basis)
+            else:
+                raise NotImplementedError(f"Faiss backend does not support {distance} metric in this implementation.")
+
+        elif knn_backend == 'voyager':
+            if _RANDOM_STATE is not None:
+                logger.warning("Using Voyager with random state: Current implementation may not be fully deterministic.")
+            if voyager is None:
+                raise ImportError("voyager is not installed.")
+            if distance == "euclidean":
+                metric = voyager.Space.Euclidean
+            elif distance == "angular":
+                metric = voyager.Space.Cosine
+            else:
+                 raise NotImplementedError(f"Voyager backend does not support {distance} metric in this implementation.")
+            tree = voyager.Index(metric, num_dimensions=dim, random_seed=_RANDOM_STATE if _RANDOM_STATE is not None else 1)
+            tree.add_items(basis)
+
+        else:
+            raise ValueError(f"Unknown knn_backend: {knn_backend}")
+    
+    # If tree was passed or built, we can query it now
+    # Check if tree is Annoy, Faiss, or Voyager object to handle query appropriately
+    # Note: If tree is passed in, we assume it matches the expected backend logic or object type.
+    
+    # Check tree type to determine query method if knn_backend isn't strictly relied upon for the object type
+    # But for simplicity, we rely on knn_backend flag or object type.
+    
+    is_annoy = isinstance(tree, AnnoyIndex)
+    is_faiss = faiss and isinstance(tree, faiss.Index)
+    is_voyager = voyager and isinstance(tree, voyager.Index)
+    
+    # Determine 'n' (number of items in basis)
+    if is_annoy:
         n = tree.get_n_items()
+    elif is_faiss:
+        n = tree.ntotal
+    elif is_voyager:
+        n = tree.num_elements
+    else:
+        # Fallback if tree was reconstructed locally above, n is defined
+        pass 
 
     if n - 1 < n_neighbors:
         logger.warning("Sample size is smaller than n_neighbors. "
-                        "n_neighbors will be reduced.")
+                       "n_neighbors will be reduced.")
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
     n_neighbors = min(n_neighbors, n - 1)
+    
     nbrs = np.zeros((npr, n_neighbors_extra), dtype=np.int32)
     knn_distances = np.empty((npr, n_neighbors_extra), dtype=np.float32)
 
-    for i in range(npr):
-        nbrs[i, :], knn_distances[i, :] = tree.get_nns_by_vector(
-            X[i, :], n_neighbors_extra, include_distances=True)
+    if is_annoy or (not is_faiss and not is_voyager and knn_backend == 'annoy'):
+        for i in range(npr):
+            nbrs[i, :], knn_distances[i, :] = tree.get_nns_by_vector(
+                X[i, :], n_neighbors_extra, include_distances=True)
+    
+    elif is_faiss or knn_backend == 'faiss':
+        if distance == "angular":
+             X_query = X.copy()
+             faiss.normalize_L2(X_query)
+             D, I = tree.search(X_query, n_neighbors_extra)
+             # Clamp D to be at most 1.0 to avoid nan
+             D = np.minimum(D, 1.0)
+             # D is cosine similarity. Convert to angular distance sqrt(2(1-cos))
+             knn_distances = np.sqrt(2 * (1 - D)).astype(np.float32)
+        elif distance == "manhattan":
+             D, I = tree.search(X, n_neighbors_extra)
+             knn_distances = D.astype(np.float32)
+        else:
+             D, I = tree.search(X, n_neighbors_extra)
+             # D is squared L2 distance. Convert to L2 distance
+             knn_distances = np.sqrt(D).astype(np.float32)
+        nbrs = I.astype(np.int32)
+        
+    elif is_voyager or knn_backend == 'voyager':
+        I, D = tree.query(X, k=n_neighbors_extra)
+        nbrs = I.astype(np.int32)
+        # Voyager returns squared distances for Euclidean
+        knn_distances = np.sqrt(D).astype(np.float32)
 
     print_verbose("Found nearest neighbor", verbose)
 
@@ -471,7 +567,8 @@ def generate_pair(
         n_MN,
         n_FP,
         distance='euclidean',
-        verbose=True
+        verbose=True,
+        knn_backend='annoy'
 ):
     '''Generate pairs for the dataset.
     '''
@@ -479,47 +576,131 @@ def generate_pair(
     # sample more neighbors than needed
     if n - 1 < n_neighbors:
         logger.warning("Sample size is smaller than number of neighbor pairs"
-                        " requested. n_neighbors will be reduced.")
+                       " requested. n_neighbors will be reduced.")
     n_neighbors_extra = min(n_neighbors + 50, n - 1)
     n_neighbors = min(n_neighbors, n - 1)
     if n - 1 < n_FP:
         logger.warning("Sample size is smaller than number of further pairs"
-                        " requested. n_FP will be reduced.")
+                       " requested. n_FP will be reduced.")
     n_FP = min(n_FP, n - 1)
     if n - 1 < n_MN:
         logger.warning("Sample size is smaller than number of mid-near pairs"
-                        " requested. n_MN will be reduced.")
+                       " requested. n_MN will be reduced.")
     n_MN = min(n_MN, n - 1)
 
     if n_neighbors + n_MN + n_FP >= n:
         logger.warning("Sample size is smaller than the total number of assigned points, n_neighbors, n_MN, n_FP would be reorganized")
-        self.n_neighbors = int(n / ( 1 + self.MN_ratio + self.FP_ratio))
-        self.n_MN = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.MN_ratio)
-        self.n_FP = int(n / ( 1 + self.MN_ratio + self.FP_ratio) * self.FP_ratio)
+        
+        # Infer ratios from the inputs provided
+        if n_neighbors > 0:
+            mn_r = n_MN / n_neighbors
+            fp_r = n_FP / n_neighbors
+            
+            n_neighbors = int(n / (1 + mn_r + fp_r))
+            n_MN = int(n_neighbors * mn_r)
+            n_FP = int(n_neighbors * fp_r)
+        else:
+            # Edge case handling
+            n_neighbors = 0
+            n_MN = 0
+            n_FP = 0
     
-    tree = AnnoyIndex(dim, metric=distance)
-    if _RANDOM_STATE is not None:
-        tree.set_seed(_RANDOM_STATE)
-    for i in range(n):
-        tree.add_item(i, X[i, :])
-    tree.build(20)
-
-    option = distance_to_option(distance=distance)
-
+    tree = None
     nbrs = np.zeros((n, n_neighbors_extra), dtype=np.int32)
     knn_distances = np.empty((n, n_neighbors_extra), dtype=np.float32)
 
-    for i in range(n):
-        nbrs_ = tree.get_nns_by_item(i, n_neighbors_extra + 1)
-        nbrs[i, :] = nbrs_[1:]
-        for j in range(n_neighbors_extra):
-            knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
+    if knn_backend == 'annoy':
+        tree = AnnoyIndex(dim, metric=distance)
+        if _RANDOM_STATE is not None:
+            tree.set_seed(_RANDOM_STATE)
+        for i in range(n):
+            tree.add_item(i, X[i, :])
+        tree.build(20)
+
+        for i in range(n):
+            nbrs_ = tree.get_nns_by_item(i, n_neighbors_extra + 1)
+            nbrs[i, :] = nbrs_[1:]
+            for j in range(n_neighbors_extra):
+                knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
+    
+    elif knn_backend == 'faiss':
+        if faiss is None:
+            raise ImportError("faiss is not installed.")
+        
+        if _RANDOM_STATE is not None:
+            # logger.warning("Using Faiss with random state: HNSW construction is non-deterministic.")
+            faiss.omp_set_num_threads(1)
+        # Determine metric
+        if distance == 'euclidean':
+            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L2)
+            index.add(X)
+            tree = index
+            D, I = index.search(X, n_neighbors_extra + 1)
+            nbrs = I[:, 1:].astype(np.int32)
+            knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+            
+        elif distance == 'angular':
+            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_INNER_PRODUCT)
+            X_norm = X.copy()
+            faiss.normalize_L2(X_norm)
+            index.add(X_norm)
+            tree = index
+            
+            D, I = index.search(X_norm, n_neighbors_extra + 1)
+            nbrs = I[:, 1:].astype(np.int32)
+            D = np.minimum(D[:, 1:], 1.0)
+            knn_distances = np.sqrt(2 * (1 - D)).astype(np.float32)
+            
+        elif distance == 'manhattan':
+            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L1)
+            index.add(X)
+            tree = index
+            
+            D, I = index.search(X, n_neighbors_extra + 1)
+            nbrs = I[:, 1:].astype(np.int32)
+            knn_distances = D[:, 1:].astype(np.float32)
+
+        else:
+            raise NotImplementedError(f"Faiss backend does not support {distance} metric in this implementation.")
+        
+    elif knn_backend == 'voyager':
+        if voyager is None:
+            raise ImportError("voyager is not installed.")
+        
+        if _RANDOM_STATE is not None:
+            logger.warning("Using Voyager with random state: Determinism depends on the underlying Voyager implementation.")
+
+        if distance == 'euclidean':
+            metric = voyager.Space.Euclidean
+        elif distance == 'angular':
+            metric = voyager.Space.Cosine
+        else:
+            raise NotImplementedError(f"Voyager backend does not support {distance} metric in this implementation.")
+            
+        # Voyager accepts random_seed for deterministic behavior
+        index = voyager.Index(metric, num_dimensions=dim, random_seed=_RANDOM_STATE if _RANDOM_STATE is not None else 1)
+        index.add_items(X)
+        tree = index
+        
+        # Query
+        I, D = index.query(X, k=n_neighbors_extra + 1)
+        
+        # Exclude self
+        nbrs = I[:, 1:].astype(np.int32)
+        knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+
+    else:
+        raise ValueError(f"Unknown knn_backend: {knn_backend}")
+
     print_verbose("Found nearest neighbor", verbose)
     sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
     print_verbose("Calculated sigma", verbose)
     scaled_dist = scale_dist(knn_distances, sig, nbrs)
     print_verbose("Found scaled dist", verbose)
     pair_neighbors = sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors)
+    
+    option = distance_to_option(distance=distance)
+    
     if _RANDOM_STATE is None:
         pair_MN = sample_MN_pair(X, n_MN, option)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
@@ -724,17 +905,30 @@ def save(instance, common_prefix: str):
     '''
     Save PaCMAP instance to a location specified by the user.
 
-    PaCMAP use ANNOY for graph construction, which cannot be pickled. We provide
-    this function as an alternative to save a PaCMAP instance by storing the
-    ANNOY instance and other parts of PaCMAP separately.
+    PaCMAP uses ANNOY, Faiss, or Voyager for graph construction, which cannot always be pickled directly. 
+    We provide this function as an alternative to save a PaCMAP instance by storing the 
+    index instance and other parts of PaCMAP separately.
     '''
     extra_info = ""
+    temp_tree = instance.tree
+    
     if instance.save_tree:
-        # Save the AnnoyIndex
-        instance.tree.save(f"{common_prefix}.ann")
-        temp_tree = instance.tree
+        # Check backend type based on the tree object type
+        is_annoy = isinstance(instance.tree, AnnoyIndex)
+        is_faiss = faiss and isinstance(instance.tree, faiss.Index)
+        is_voyager = voyager and isinstance(instance.tree, voyager.Index)
+
+        if is_annoy:
+            instance.tree.save(f"{common_prefix}.ann")
+            extra_info = f", and the Annoy Index is saved at {common_prefix}.ann"
+        elif is_faiss:
+            faiss.write_index(instance.tree, f"{common_prefix}.faiss")
+            extra_info = f", and the Faiss Index is saved at {common_prefix}.faiss"
+        elif is_voyager:
+            instance.tree.save(f"{common_prefix}.voyager")
+            extra_info = f", and the Voyager Index is saved at {common_prefix}.voyager"
+        
         instance.tree = None  # Remove the tree for pickle
-        extra_info = f", and the Annoy Index is saved at {common_prefix}.ann"
 
     # Save the other parts
     with open(f"{common_prefix}.pkl", "wb") as fp:
@@ -744,14 +938,30 @@ def save(instance, common_prefix: str):
     print(f"To load the instance again, please do `pacmap.load({common_prefix})`.")
 
     if instance.save_tree:
-        # Reload the AnnoyIndex
-        instance.tree = temp_tree  # reload the annoy index
+        # Reload the Index
+        instance.tree = temp_tree  # reload the index
         assert instance.tree is not None
 
 
 def attach_index(reducer, index_path: str):
-    reducer.tree = AnnoyIndex(reducer.num_dimensions, reducer.distance)
-    reducer.tree.load(index_path)  # mmap the file
+    # Determine which backend to load based on reducer configuration
+    # If not explicitly stored, we might guess from file extension or default to Annoy
+    # Here we assume the reducer stores its backend choice or we infer from extension if possible
+    
+    backend = getattr(reducer, 'knn_backend', 'annoy') # Default to annoy for backward compatibility
+    
+    if backend == 'annoy':
+        reducer.tree = AnnoyIndex(reducer.num_dimensions, reducer.distance)
+        reducer.tree.load(index_path)  # mmap the file
+    elif backend == 'faiss':
+        if faiss is None: raise ImportError("Cannot load Faiss index: faiss module not found.")
+        reducer.tree = faiss.read_index(index_path)
+    elif backend == 'voyager':
+        if voyager is None: raise ImportError("Cannot load Voyager index: voyager module not found.")
+        reducer.tree = voyager.Index.load(index_path)
+    else:
+        raise ValueError(f"Unknown knn_backend: {backend}")
+        
     return reducer
 
 
@@ -777,10 +987,20 @@ def load(
         with open(f"{common_prefix}.pkl", "rb") as fp:
             instance = pkl.load(fp)
 
+    # Determine backend for extension checking
+    backend = getattr(instance, 'knn_backend', 'annoy')
+    
+    ext_map = {
+        'annoy': '.ann',
+        'faiss': '.faiss',
+        'voyager': '.voyager'
+    }
+    default_ext = ext_map.get(backend, '.ann')
+
     if index_path is not None:
         instance = attach_index(instance, index_path)
     else:  # attempt to load index from common path
-        index_path = f"{common_prefix}.ann"
+        index_path = f"{common_prefix}{default_ext}"
         if os.path.exists(index_path):
             instance = attach_index(instance, index_path)
 
@@ -852,6 +1072,10 @@ class PaCMAP(BaseEstimator):
     save_tree: bool, default=False
         Whether to save the annoy index tree after finding the nearest neighbor pairs.
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
+        
+    knn_backend: str, default="annoy"
+        The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
+        'faiss' and 'voyager' are generally faster but require those libraries to be installed.
     '''
 
     def __init__(self,
@@ -871,7 +1095,8 @@ class PaCMAP(BaseEstimator):
                  intermediate_snapshots=[
                      0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
                  random_state=None,
-                 save_tree=False
+                 save_tree=False,
+                 knn_backend="annoy"
                  ):
         self.n_components = n_components
         self.n_neighbors = n_neighbors
@@ -888,6 +1113,7 @@ class PaCMAP(BaseEstimator):
         self.intermediate = intermediate
         self.save_tree = save_tree
         self.intermediate_snapshots = intermediate_snapshots
+        self.knn_backend = knn_backend
 
         global _RANDOM_STATE
         if random_state is not None:
@@ -905,10 +1131,10 @@ class PaCMAP(BaseEstimator):
             _RANDOM_STATE = None  # Reset random state
 
         # Raise error on initialization with an incorrect distance metric.
-        VALID_ANNOY_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
-        if self.distance not in VALID_ANNOY_METRICS:
+        VALID_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
+        if self.distance not in VALID_METRICS:
             raise NotImplementedError(
-                "`distance` must be one of {}".format(", ".join(VALID_ANNOY_METRICS))
+                "`distance` must be one of {}".format(", ".join(VALID_METRICS))
             )
 
         if self.n_components < 1:
@@ -922,9 +1148,15 @@ class PaCMAP(BaseEstimator):
         if self.distance == "hamming" and apply_pca:
             logger.warning(
                 "apply_pca = True for Hamming distance. This option will be ignored.")
-        if not self.apply_pca:
+        if not self.apply_pca and self.knn_backend == "annoy":
             logger.warning(
                 "Running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
+        
+        # Backend availability check
+        if self.knn_backend == "faiss" and faiss is None:
+            raise ImportError("knn_backend='faiss' requested, but faiss is not installed.")
+        if self.knn_backend == "voyager" and voyager is None:
+            raise ImportError("knn_backend='voyager' requested, but voyager is not installed.")
 
     def decide_num_pairs(self, n):
         if self.n_neighbors is None:
@@ -937,15 +1169,15 @@ class PaCMAP(BaseEstimator):
 
         if n - 1 < self.n_neighbors:
             logger.warning("Sample size is smaller than number of neighbor pairs"
-                            " requested. n_neighbors will be reduced.")
+                           " requested. n_neighbors will be reduced.")
         self.n_neighbors = min(self.n_neighbors, n - 1)
         if n - 1 < self.n_FP:
             logger.warning("Sample size cannot accommodate number of further pairs"
-                            " requested. n_FP will be reduced.")
+                           " requested. n_FP will be reduced.")
         self.n_FP = min(self.n_FP, n - 1 - self.n_neighbors)
         if n - 1 < self.n_MN:
             logger.warning("Sample size is smaller than number of mid-near pairs"
-                            " requested. n_MN will be reduced.")
+                           " requested. n_MN will be reduced.")
         self.n_MN = min(self.n_MN, n - 1)
 
 
@@ -1002,7 +1234,7 @@ class PaCMAP(BaseEstimator):
         print_verbose(
             "PaCMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={}, "
             "lr={}, n_iters={}, apply_pca={}, opt_method='adam', "
-            "verbose={}, intermediate={}, seed={})".format(
+            "verbose={}, intermediate={}, seed={}, knn_backend={})".format(
                 self.n_neighbors,
                 self.n_MN,
                 self.n_FP,
@@ -1012,7 +1244,8 @@ class PaCMAP(BaseEstimator):
                 self.apply_pca,
                 self.verbose,
                 self.intermediate,
-                _RANDOM_STATE
+                _RANDOM_STATE,
+                self.knn_backend
             ), self.verbose
         )
         # Sample pairs
@@ -1108,7 +1341,8 @@ class PaCMAP(BaseEstimator):
                                                  self.n_neighbors,
                                                  self.tree,
                                                  self.distance,
-                                                 self.verbose
+                                                 self.verbose,
+                                                 self.knn_backend
                                                  )
         # Initialize and Optimize the embedding
         Y, intermediate_states = pacmap_fit(X, self.embedding_, self.n_components, self.pair_XP, self.lr,
@@ -1140,7 +1374,7 @@ class PaCMAP(BaseEstimator):
         print_verbose("Finding pairs", self.verbose)
         if self.pair_neighbors is None:
             self.pair_neighbors, self.pair_MN, self.pair_FP, self.tree = generate_pair(
-                X, self.n_neighbors, self.n_MN, self.n_FP, self.distance, self.verbose
+                X, self.n_neighbors, self.n_MN, self.n_FP, self.distance, self.verbose, self.knn_backend
             )
             print_verbose("Pairs sampled successfully.", self.verbose)
         elif self.pair_MN is None and self.pair_FP is None:
@@ -1439,6 +1673,9 @@ class LocalMAP(PaCMAP):
         larger than the average low-dimension distance among all nearest clusters pair.
         Default to 10 based on observation.
         
+    knn_backend: str, default="annoy"
+        The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
+        'faiss' and 'voyager' are generally faster but require those libraries to be installed.
     '''
     def __init__(self,
                     n_components=2,
@@ -1458,11 +1695,12 @@ class LocalMAP(PaCMAP):
                         0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
                     random_state=None,
                     save_tree=False,
-                    low_dist_thres=10
+                    low_dist_thres=10,
+                    knn_backend="annoy"
                     ):
             super().__init__(n_components, n_neighbors, MN_ratio, FP_ratio, pair_neighbors, pair_MN, pair_FP,
                             distance, lr, num_iters, verbose, apply_pca, intermediate, intermediate_snapshots, 
-                            random_state, save_tree)
+                            random_state, save_tree, knn_backend)
             self.low_dist_thres = low_dist_thres
             
     def fit(self, X, init=None, save_pairs=True):
@@ -1497,7 +1735,7 @@ class LocalMAP(PaCMAP):
         print_verbose(
             "LocalMAP(n_neighbors={}, n_MN={}, n_FP={}, distance={}, "
             "lr={}, n_iters={}, apply_pca={}, opt_method='adam', "
-            "verbose={}, intermediate={}, low_dist_threshold={}, seed={})".format(
+            "verbose={}, intermediate={}, low_dist_threshold={}, seed={}, knn_backend={})".format(
                 self.n_neighbors,
                 self.n_MN,
                 self.n_FP,
@@ -1508,7 +1746,8 @@ class LocalMAP(PaCMAP):
                 self.verbose,
                 self.intermediate,
                 self.low_dist_thres,
-                _RANDOM_STATE
+                _RANDOM_STATE,
+                self.knn_backend
             ), self.verbose
         )
         # Sample pairs

@@ -1,5 +1,10 @@
 # Release Notes
 
+- 0.9.0
+  Add `Voyager` and `FAISS` backend within the package (issue 136 and 94)
+  Fixed Issue 127 and 128 for PaCMAP hangs
+  Improve the normalization to avoid small xmax
+
 - 0.8.0
   Add `LocalMAP` algorithm to release.
 
