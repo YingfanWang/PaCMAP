@@ -1,8 +1,11 @@
 # Release Notes
 
 - 0.9.0
-  Add `Voyager` and `FAISS` backend within the package (issue 136 and 94)
-  Fixed #127 and #128 for PaCMAP hangs: https://github.com/YingfanWang/PaCMAP/issues/127, https://github.com/YingfanWang/PaCMAP/issues/128
+
+  Add `Voyager` and `FAISS` backend within the package ([136](https://github.com/YingfanWang/PaCMAP/issues/136) and [94](https://github.com/YingfanWang/PaCMAP/issues/94)) based on the pull request from @Tyrannas in https://github.com/YingfanWang/PaCMAP/pull/137.
+  
+  Fixed https://github.com/YingfanWang/PaCMAP/issues/127, https://github.com/YingfanWang/PaCMAP/issues/128 for PaCMAP hangs
+  
   Improve the normalization to avoid small xmax
 
 - 0.8.0
