@@ -211,3 +211,4 @@ if __name__ == "__main__":
     # These require internet/data
     test_pacmap_fashion_mnist_manhattan()
     test_pacmap_mnist_metrics()
+    

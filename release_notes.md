@@ -2,7 +2,7 @@
 
 - 0.9.0
   Add `Voyager` and `FAISS` backend within the package (issue 136 and 94)
-  Fixed Issue 127 and 128 for PaCMAP hangs
+  Fixed #127 and #128 for PaCMAP hangs: https://github.com/YingfanWang/PaCMAP/issues/127, https://github.com/YingfanWang/PaCMAP/issues/128
   Improve the normalization to avoid small xmax
 
 - 0.8.0

@@ -561,6 +561,105 @@ def generate_extra_pair_basis(basis,
     return pair_neighbors
 
 
+def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_state):
+    '''Helper function to compute nearest neighbors.'''
+    n, dim = X.shape
+    # sample more neighbors than needed because the first one is the point itself
+    k = n_neighbors + 1
+
+    tree = None
+    nbrs = None
+    knn_distances = None
+
+    if knn_backend == 'annoy':
+        tree = AnnoyIndex(dim, metric=distance)
+        if random_state is not None:
+            tree.set_seed(random_state)
+        for i in range(n):
+            tree.add_item(i, X[i, :])
+        tree.build(20)
+
+        nbrs = np.zeros((n, n_neighbors), dtype=np.int32)
+        knn_distances = np.empty((n, n_neighbors), dtype=np.float32)
+
+        for i in range(n):
+            nbrs_ = tree.get_nns_by_item(i, k)
+            nbrs[i, :] = nbrs_[1:]
+            for j in range(n_neighbors):
+                knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
+    
+    elif knn_backend == 'faiss':
+        if faiss is None:
+            raise ImportError("faiss is not installed.")
+        
+        if random_state is not None:
+            # logger.warning("Using Faiss with random state: HNSW construction is non-deterministic.")
+            faiss.omp_set_num_threads(1)
+        # Determine metric
+        if distance == 'euclidean':
+            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L2)
+            index.add(X)
+            tree = index
+            D, I = index.search(X, k)
+            nbrs = I[:, 1:].astype(np.int32)
+            knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+            
+        elif distance == 'angular':
+            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_INNER_PRODUCT)
+            X_norm = X.copy()
+            faiss.normalize_L2(X_norm)
+            index.add(X_norm)
+            tree = index
+            
+            D, I = index.search(X_norm, k)
+            nbrs = I[:, 1:].astype(np.int32)
+            D = np.minimum(D[:, 1:], 1.0)
+            knn_distances = np.sqrt(2 * (1 - D)).astype(np.float32)
+            
+        elif distance == 'manhattan':
+            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L1)
+            index.add(X)
+            tree = index
+            
+            D, I = index.search(X, k)
+            nbrs = I[:, 1:].astype(np.int32)
+            knn_distances = D[:, 1:].astype(np.float32)
+
+        else:
+            raise NotImplementedError(f"Faiss backend does not support {distance} metric in this implementation.")
+        
+    elif knn_backend == 'voyager':
+        if voyager is None:
+            raise ImportError("voyager is not installed.")
+        
+        if random_state is not None:
+            logger.warning("Using Voyager with random state: Determinism depends on the underlying Voyager implementation.")
+
+        if distance == 'euclidean':
+            metric = voyager.Space.Euclidean
+        elif distance == 'angular':
+            metric = voyager.Space.Cosine
+        else:
+            raise NotImplementedError(f"Voyager backend does not support {distance} metric in this implementation.")
+            
+        # Voyager accepts random_seed for deterministic behavior
+        index = voyager.Index(metric, num_dimensions=dim, random_seed=random_state if random_state is not None else 1)
+        index.add_items(X)
+        tree = index
+        
+        # Query
+        I, D = index.query(X, k=k)
+        
+        # Exclude self
+        nbrs = I[:, 1:].astype(np.int32)
+        knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+
+    else:
+        raise ValueError(f"Unknown knn_backend: {knn_backend}")
+
+    return tree, nbrs, knn_distances
+
+
 def generate_pair(
         X,
         n_neighbors,
@@ -605,92 +704,9 @@ def generate_pair(
             n_MN = 0
             n_FP = 0
     
-    tree = None
-    nbrs = np.zeros((n, n_neighbors_extra), dtype=np.int32)
-    knn_distances = np.empty((n, n_neighbors_extra), dtype=np.float32)
-
-    if knn_backend == 'annoy':
-        tree = AnnoyIndex(dim, metric=distance)
-        if _RANDOM_STATE is not None:
-            tree.set_seed(_RANDOM_STATE)
-        for i in range(n):
-            tree.add_item(i, X[i, :])
-        tree.build(20)
-
-        for i in range(n):
-            nbrs_ = tree.get_nns_by_item(i, n_neighbors_extra + 1)
-            nbrs[i, :] = nbrs_[1:]
-            for j in range(n_neighbors_extra):
-                knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
-    
-    elif knn_backend == 'faiss':
-        if faiss is None:
-            raise ImportError("faiss is not installed.")
-        
-        if _RANDOM_STATE is not None:
-            # logger.warning("Using Faiss with random state: HNSW construction is non-deterministic.")
-            faiss.omp_set_num_threads(1)
-        # Determine metric
-        if distance == 'euclidean':
-            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L2)
-            index.add(X)
-            tree = index
-            D, I = index.search(X, n_neighbors_extra + 1)
-            nbrs = I[:, 1:].astype(np.int32)
-            knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
-            
-        elif distance == 'angular':
-            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_INNER_PRODUCT)
-            X_norm = X.copy()
-            faiss.normalize_L2(X_norm)
-            index.add(X_norm)
-            tree = index
-            
-            D, I = index.search(X_norm, n_neighbors_extra + 1)
-            nbrs = I[:, 1:].astype(np.int32)
-            D = np.minimum(D[:, 1:], 1.0)
-            knn_distances = np.sqrt(2 * (1 - D)).astype(np.float32)
-            
-        elif distance == 'manhattan':
-            index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_L1)
-            index.add(X)
-            tree = index
-            
-            D, I = index.search(X, n_neighbors_extra + 1)
-            nbrs = I[:, 1:].astype(np.int32)
-            knn_distances = D[:, 1:].astype(np.float32)
-
-        else:
-            raise NotImplementedError(f"Faiss backend does not support {distance} metric in this implementation.")
-        
-    elif knn_backend == 'voyager':
-        if voyager is None:
-            raise ImportError("voyager is not installed.")
-        
-        if _RANDOM_STATE is not None:
-            logger.warning("Using Voyager with random state: Determinism depends on the underlying Voyager implementation.")
-
-        if distance == 'euclidean':
-            metric = voyager.Space.Euclidean
-        elif distance == 'angular':
-            metric = voyager.Space.Cosine
-        else:
-            raise NotImplementedError(f"Voyager backend does not support {distance} metric in this implementation.")
-            
-        # Voyager accepts random_seed for deterministic behavior
-        index = voyager.Index(metric, num_dimensions=dim, random_seed=_RANDOM_STATE if _RANDOM_STATE is not None else 1)
-        index.add_items(X)
-        tree = index
-        
-        # Query
-        I, D = index.query(X, k=n_neighbors_extra + 1)
-        
-        # Exclude self
-        nbrs = I[:, 1:].astype(np.int32)
-        knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
-
-    else:
-        raise ValueError(f"Unknown knn_backend: {knn_backend}")
+    tree, nbrs, knn_distances = compute_nearest_neighbors(
+        X, n_neighbors_extra, distance, knn_backend, _RANDOM_STATE
+    )
 
     print_verbose("Found nearest neighbor", verbose)
     sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
@@ -1148,9 +1164,9 @@ class PaCMAP(BaseEstimator):
         if self.distance == "hamming" and apply_pca:
             logger.warning(
                 "apply_pca = True for Hamming distance. This option will be ignored.")
-        if not self.apply_pca and self.knn_backend == "annoy":
+        if not self.apply_pca:
             logger.warning(
-                "Running ANNOY Indexing on high-dimensional data. Nearest-neighbor search may be slow!")
+                "Running NN Backend on high-dimensional data. Nearest-neighbor search may be slow!")
         
         # Backend availability check
         if self.knn_backend == "faiss" and faiss is None:
