@@ -489,7 +489,11 @@ def generate_extra_pair_basis(basis,
             else:
                  raise NotImplementedError(f"Voyager backend does not support {distance} metric in this implementation.")
             tree = voyager.Index(metric, num_dimensions=dim, random_seed=_RANDOM_STATE if _RANDOM_STATE is not None else 1)
-            tree.add_items(basis)
+            if _RANDOM_STATE is not None:
+                tree.add_items(basis,num_threads=1)
+            else:
+                tree.add_items(basis)
+            
 
         else:
             raise ValueError(f"Unknown knn_backend: {knn_backend}")
@@ -644,7 +648,7 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
             
         # Voyager accepts random_seed for deterministic behavior
         index = voyager.Index(metric, num_dimensions=dim, random_seed=random_state if random_state is not None else 1)
-        index.add_items(X)
+        index.add_items(X, num_threads=1)
         tree = index
         
         # Query

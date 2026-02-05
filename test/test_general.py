@@ -50,10 +50,10 @@ def test_pacmap_deterministic_random_state():
     
     # Test for each backend
     for backend in get_available_backends():
-        if backend == "voyager":
-            # Faiss uses a fixed seed internally for reproducibility.
-            print("Skipping non-deterministic test for voyager backend.")
-            continue
+        # if backend == "voyager":
+        #     # Faiss uses a fixed seed internally for reproducibility.
+        #     print("Skipping non-deterministic test for voyager backend.")
+        #     continue
         print(f"Testing deterministic behavior for backend: {backend}")
         b = pacmap.PaCMAP(random_state=10, knn_backend=backend)
         b_out = b.fit_transform(sample_data)
