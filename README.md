@@ -146,6 +146,8 @@ Other parameters include:
 - `lr`: learning rate of the AdaGrad optimizer. Default to 1.
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
 - `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_components`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
+- `nn_backend`: the backend used to construct the k-Nearest Neighbor graph. One of `"annoy"`, `"faiss"`, or `"voyager"`. Default to `"annoy"`.
+- `low_dist_thres`[Only Used in `LocalMAP`]: The Proximal Cluster Distance Commons, the acceptance distance threshold for selecting local FP with distance no larger than the average low-dimension distance among all nearest clusters pair. Default to 10.
 
 ## <a name='Methods'></a>Methods
 
