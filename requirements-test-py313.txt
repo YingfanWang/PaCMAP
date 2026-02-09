@@ -1,0 +1,53 @@
+# This file is for Python 3.13 testing where Annoy and Voyager are installed separately via [all-git]
+# It includes all dev dependencies except the optional backends
+
+coverage==7.13.3
+    # via pytest-cov
+contourpy==1.3.3
+    # via matplotlib
+cycler==0.12.1
+    # via matplotlib
+faiss-cpu==1.13.2
+    # via pacmap (required dependency)
+fonttools==4.61.1
+    # via matplotlib
+iniconfig==2.3.0
+    # via pytest
+joblib==1.5.3
+    # via scikit-learn
+kiwisolver==1.4.9
+    # via matplotlib
+llvmlite==0.46.0
+    # via numba
+matplotlib==3.10.8
+    # via testing
+numba==0.63.1
+    # via pacmap
+numpy==2.3.5
+    # via pacmap and various dependencies
+packaging==26.0
+    # via faiss-cpu, matplotlib, pytest
+pandas>=1.0
+    # via testing openml datasets
+pillow==12.1.0
+    # via matplotlib
+pluggy==1.6.0
+    # via pytest, pytest-cov
+pygments==2.19.2
+    # via pytest
+pyparsing==3.3.2
+    # via matplotlib
+pytest==9.0.2
+    # via testing
+pytest-cov==7.0.0
+    # via testing
+python-dateutil==2.9.0.post0
+    # via matplotlib
+scikit-learn==1.8.0
+    # via pacmap
+scipy==1.17.0
+    # via scikit-learn
+six==1.17.0
+    # via python-dateutil
+threadpoolctl==3.6.0
+    # via scikit-learn
