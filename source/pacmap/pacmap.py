@@ -12,13 +12,15 @@ from sklearn.base import BaseEstimator
 from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn.utils.validation import check_is_fitted
 from sklearn import preprocessing
-from annoy import AnnoyIndex
 
-# Optional imports for faiss and voyager
+# Mandatory FAISS import (default backend)
+import faiss
+
+# Optional imports for annoy and voyager
 try:
-    import faiss
+    from annoy import AnnoyIndex
 except ImportError:
-    faiss = None
+    AnnoyIndex = None
 
 try:
     import voyager
@@ -435,7 +437,7 @@ def generate_extra_pair_basis(basis,
                               tree,
                               distance='euclidean',
                               verbose=True,
-                              knn_backend='annoy'
+                              knn_backend='faiss'
                               ):
     '''Generate pairs that connects the extra set of data to the fitted basis.
     '''
@@ -449,6 +451,8 @@ def generate_extra_pair_basis(basis,
         assert dimp == dim, "The dimension of the original dataset is different from the new one's."
         
         if knn_backend == 'annoy':
+            if AnnoyIndex is None:
+                raise ImportError("knn_backend='annoy' requested, but annoy is not installed.")
             tree = AnnoyIndex(dim, metric=distance)
             if _RANDOM_STATE is not None:
                 tree.set_seed(_RANDOM_STATE)
@@ -505,8 +509,8 @@ def generate_extra_pair_basis(basis,
     # Check tree type to determine query method if knn_backend isn't strictly relied upon for the object type
     # But for simplicity, we rely on knn_backend flag or object type.
     
-    is_annoy = isinstance(tree, AnnoyIndex)
-    is_faiss = faiss and isinstance(tree, faiss.Index)
+    is_annoy = AnnoyIndex is not None and isinstance(tree, AnnoyIndex)
+    is_faiss = isinstance(tree, faiss.Index)
     is_voyager = voyager and isinstance(tree, voyager.Index)
     
     # Determine 'n' (number of items in basis)
@@ -576,6 +580,8 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
     knn_distances = None
 
     if knn_backend == 'annoy':
+        if AnnoyIndex is None:
+            raise ImportError("knn_backend='annoy' requested, but annoy is not installed.")
         tree = AnnoyIndex(dim, metric=distance)
         if random_state is not None:
             tree.set_seed(random_state)
@@ -671,7 +677,7 @@ def generate_pair(
         n_FP,
         distance='euclidean',
         verbose=True,
-        knn_backend='annoy'
+        knn_backend='faiss'
 ):
     '''Generate pairs for the dataset.
     '''
@@ -968,9 +974,11 @@ def attach_index(reducer, index_path: str):
     # If not explicitly stored, we might guess from file extension or default to Annoy
     # Here we assume the reducer stores its backend choice or we infer from extension if possible
     
-    backend = getattr(reducer, 'knn_backend', 'annoy') # Default to annoy for backward compatibility
+    backend = getattr(reducer, 'knn_backend', 'faiss') # Default to faiss for backward compatibility
     
     if backend == 'annoy':
+        if AnnoyIndex is None:
+            raise ImportError("Cannot load Annoy index: annoy module not found.")
         reducer.tree = AnnoyIndex(reducer.num_dimensions, reducer.distance)
         reducer.tree.load(index_path)  # mmap the file
     elif backend == 'faiss':
@@ -1008,7 +1016,7 @@ def load(
             instance = pkl.load(fp)
 
     # Determine backend for extension checking
-    backend = getattr(instance, 'knn_backend', 'annoy')
+    backend = getattr(instance, 'knn_backend', 'faiss')
     
     ext_map = {
         'annoy': '.ann',
@@ -1093,9 +1101,9 @@ class PaCMAP(BaseEstimator):
         Whether to save the annoy index tree after finding the nearest neighbor pairs.
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
         
-    knn_backend: str, default="annoy"
+    knn_backend: str, default="faiss"
         The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
-        'faiss' and 'voyager' are generally faster but require those libraries to be installed.
+        'faiss' is the default and generally faster. 'annoy' and 'voyager' are also available.
     '''
 
     def __init__(self,
@@ -1116,7 +1124,7 @@ class PaCMAP(BaseEstimator):
                      0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
                  random_state=None,
                  save_tree=False,
-                 knn_backend="annoy"
+                 knn_backend="faiss"
                  ):
         self.n_components = n_components
         self.n_neighbors = n_neighbors
@@ -1693,9 +1701,9 @@ class LocalMAP(PaCMAP):
         larger than the average low-dimension distance among all nearest clusters pair.
         Default to 10 based on observation.
         
-    knn_backend: str, default="annoy"
+    knn_backend: str, default="faiss"
         The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
-        'faiss' and 'voyager' are generally faster but require those libraries to be installed.
+        'faiss' is the default and generally faster. 'annoy' and 'voyager' are also available.
     '''
     def __init__(self,
                     n_components=2,
@@ -1716,7 +1724,7 @@ class LocalMAP(PaCMAP):
                     random_state=None,
                     save_tree=False,
                     low_dist_thres=10,
-                    knn_backend="annoy"
+                    knn_backend="faiss"
                     ):
             super().__init__(n_components, n_neighbors, MN_ratio, FP_ratio, pair_neighbors, pair_MN, pair_FP,
                             distance, lr, num_iters, verbose, apply_pca, intermediate, intermediate_snapshots, 

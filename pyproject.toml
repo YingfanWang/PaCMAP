@@ -1,9 +1,69 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pacmap"
+version = "0.9.0"
+description = "The official implementation for PaCMAP: Pairwise Controlled Manifold Approximation Projection"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Yingfan Wang", email = "yingfan.wang@duke.edu"},
+    {name = "Haiyang Huang"},
+    {name = "Cynthia Rudin"},
+    {name = "Yaron Shaposhnik"},
 ]
-build-backend = "setuptools.build_meta"
+maintainers = [
+    {name = "Yingfan Wang", email = "yingfan.wang@duke.edu"},
+]
+keywords = ["dimensionality reduction", "manifold learning", "visualization", "embedding"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "scikit-learn>=0.20",
+    "numba>=0.57",
+    "numpy>=1.20",
+    "faiss-cpu",
+]
+
+[project.optional-dependencies]
+annoy = ["annoy>=1.17,<2"]
+voyager-pypi = ["voyager>=2.0"]  # For Python 3.8-3.12
+voyager-git = ["voyager @ git+https://github.com/spotify/voyager.git#subdirectory=python"]  # For Python 3.13+
+voyager = ["voyager>=2.0"]  # Default to PyPI
+all = ["annoy>=1.17,<2", "voyager>=2.0"]
+all-git = ["annoy>=1.17,<2", "voyager @ git+https://github.com/spotify/voyager.git#subdirectory=python"]
+
+[project.urls]
+Homepage = "https://github.com/YingfanWang/PaCMAP"
+Repository = "https://github.com/YingfanWang/PaCMAP"
+Documentation = "https://github.com/YingfanWang/PaCMAP"
+"Bug Tracker" = "https://github.com/YingfanWang/PaCMAP/issues"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+include = ["source/pacmap"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["source/pacmap"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
@@ -15,4 +75,14 @@ addopts = [
     "--tb=short",
     # Throw errors for typos in test markers.
     "--strict-markers",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "matplotlib>=3.0",
+    "annoy>=1.17,<2",  # For testing annoy backend
+    "voyager>=2.0",  # For testing voyager backend
+    "pandas>=1.0",  # For testing openml datasets
 ]

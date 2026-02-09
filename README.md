@@ -55,21 +55,32 @@ mamba install pacmap -c conda-forge
 ### <a name='InstallfromPyPIviapip'></a>Install from PyPI via pip
 
 You can use [pip](https://pip.pypa.io/en/stable/) to install pacmap from PyPI.
-It will automatically install the dependencies for you:
 
+**Basic installation** (includes FAISS as the default KNN backend):
 ```bash
 pip install pacmap
 ```
 
-If you have any problems during the installation of dependencies, such as
-`Failed building wheel for annoy`, you can try to install these dependencies
+**Optional KNN backends:**
+
+PaCMAP supports multiple KNN backends. Install optional backends as needed:
+
+```bash
+# Install with Annoy backend
+pip install pacmap[annoy]
+
+# Install with Voyager backend
+pip install pacmap[voyager]
+
+# Install all optional backends
+pip install pacmap[all]
+```
+
+> **Note:** The original PaCMAP paper used Annoy as the default KNN backend. Since the Annoy package is no longer actively maintained, we have switched to FAISS as the default backend for better long-term stability and performance. Annoy remains available as an optional backend for compatibility.
+
+If you have any problems during the installation, you can try installing dependencies
 with `conda` or `mamba`. Users have also reported that in some cases, you may
 wish to use `numba >= 0.57`.
-
-```bash
-conda install -c conda-forge python-annoy
-pip install pacmap
-```
 
 ## <a name='Usage'></a>Usage
 
@@ -146,7 +157,7 @@ Other parameters include:
 - `lr`: learning rate of the AdaGrad optimizer. Default to 1.
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
 - `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_components`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
-- `nn_backend`: the backend used to construct the k-Nearest Neighbor graph. One of `"annoy"`, `"faiss"`, or `"voyager"`. Default to `"annoy"`.
+- `nn_backend`: the backend used to construct the k-Nearest Neighbor graph. One of `"annoy"`, `"faiss"`, or `"voyager"`. Default to `"faiss"`. **Note:** The original paper used Annoy, but FAISS is now the default since Annoy is no longer actively maintained.
 - `low_dist_thres`[Only Used in `LocalMAP`]: The Proximal Cluster Distance Commons, the acceptance distance threshold for selecting local FP with distance no larger than the average low-dimension distance among all nearest clusters pair. Default to 10.
 
 ## <a name='Methods'></a>Methods
@@ -175,7 +186,27 @@ We test against several version of Python. (See [`.github/workflows/test.yml`][w
 
 If you are contributing code, please confirm our tests pass, and consider adding your own for any new functionality.
 
-You may run the test suite like so:
+### Development with UV (Recommended)
+
+We use [UV](https://docs.astral.sh/uv/) for fast, reproducible dependency management. To set up your development environment:
+
+```bash
+# Install UV (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Sync dependencies (creates .venv automatically)
+uv sync --dev
+
+# Run tests
+uv run pytest
+
+# Or use make
+make test
+```
+
+### Development with pip (Alternative)
+
+You may also use traditional pip-based workflow:
 
 ```sh
 # Clean up past outputs (plots will be DELETED),
