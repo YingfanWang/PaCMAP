@@ -1,50 +1,66 @@
-import pacmap
+'''
+A test script ensuring PaCMAP produces deterministic results across backends.
+'''
+import pytest
+from pacmap import pacmap
 import numpy as np
+from test_utils import get_available_backends, sample_data
 
-
-def test_pacmap_randomness_deterministic():
+@pytest.mark.parametrize("backend", get_available_backends())
+def test_pacmap_randomness_deterministic(backend, sample_data):
     """Test that PaCMAP produces deterministic results with same random_state."""
-    # Initialize
-    pacmap.PaCMAP()
-    # print
-    print(pacmap.PaCMAP())
-    np.random.seed(0)
-    sample_data = np.random.normal(size=(2000, 4000))
-    instance1 = pacmap.PaCMAP(n_components=2, n_neighbors=10, lr=1, random_state=20, apply_pca=True)
-    instance1_out = instance1.fit_transform(sample_data, init="pca")
-    instance2 = pacmap.PaCMAP(n_components=2, n_neighbors=10, lr=1, random_state=20, apply_pca=True)
-    instance2_out = instance2.fit_transform(sample_data)
-    print('Experiment finished successfully.')
-
-    print(instance1_out[:3, :3])
-    print(instance2_out[:3, :3])
+    print(f"\nTesting determinism for backend: {backend}")
+    
+    # Instance 1
+    p1 = pacmap.PaCMAP(
+        n_components=2, 
+        n_neighbors=10, 
+        lr=1, 
+        random_state=20, 
+        apply_pca=True,
+        knn_backend=backend
+    )
+    out1 = p1.fit_transform(sample_data, init="pca")
+    
+    # Instance 2
+    p2 = pacmap.PaCMAP(
+        n_components=2, 
+        n_neighbors=10, 
+        lr=1, 
+        random_state=20, 
+        apply_pca=True,
+        knn_backend=backend
+    )
+    out2 = p2.fit_transform(sample_data, init="pca")
 
     try:
-        assert(np.sum(np.abs(instance1_out-instance2_out))<1e-8)
-        print("The output is deterministic.")
+        diff = np.sum(np.abs(out1 - out2))
+        assert diff < 1e-8
+        print(f"Success: Backend {backend} is deterministic. Total diff: {diff:.2e}")
+        
     except AssertionError:
-        print("The output is not deterministic.")
-        try:
-            assert(np.sum(np.abs(instance1.pair_FP.astype(int)-instance2.pair_FP.astype(int)))<1e-8)
-            assert(np.sum(np.abs(instance1.pair_MN.astype(int)-instance2.pair_MN.astype(int)))<1e-8)
-        except AssertionError:
-            print('The pairs are not deterministic')
-            for i in range(5000):
-                if np.sum(np.abs(instance1.pair_FP[i] - instance2.pair_FP[i])) > 1e-8:
-                    print("FP")
-                    print(i)
-                    print(instance1.pair_FP[i])
-                    print(instance1.pair_FP[i])
-                    break
-            for i in range(5000):
-                if np.sum(np.abs(instance1.pair_MN[i] - instance2.pair_MN[i])) > 1e-8:
-                    print('MN')
-                    print(i)
-                    print(instance1.pair_MN[i])
-                    print(instance2.pair_MN[i])
-                    break
+        print(f"Failure: Backend {backend} is NOT deterministic.")
+        debug_internal_pairs(p1, p2)
+        raise AssertionError(f"Determinism failed for {backend}")
 
+def debug_internal_pairs(instance1, instance2):
+    """Helper to pinpoint where randomness enters the pipeline."""
+    for pair_type in ['pair_FP', 'pair_MN', 'pair_neighbors']:
+        p1 = getattr(instance1, pair_type, None)
+        p2 = getattr(instance2, pair_type, None)
+        
+        if p1 is not None and p2 is not None:
+            try:
+                assert np.allclose(p1.astype(float), p2.astype(float), atol=1e-8)
+            except AssertionError:
+                print(f"  > Mismatch detected in {pair_type}!")
+                # Find the first index where they differ
+                mismatch_idx = np.where(~np.isclose(p1.astype(float), p2.astype(float), atol=1e-8))[0][0]
+                print(f"  > First mismatch at index {mismatch_idx}:")
+                print(f"    Inst1: {p1[mismatch_idx]}")
+                print(f"    Inst2: {p2[mismatch_idx]}")
+                break
 
 if __name__ == "__main__":
-    # Backward compatibility - can still run as script
-    test_pacmap_randomness_deterministic()
+    # Allows running via 'python test_script.py'
+    pytest.main([__file__])
