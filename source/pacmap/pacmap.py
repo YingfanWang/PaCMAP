@@ -939,10 +939,10 @@ def save(instance, common_prefix: str):
     temp_tree = instance.tree
     
     if instance.save_tree:
-        # Check backend type based on the tree object type
-        is_annoy = isinstance(instance.tree, AnnoyIndex)
-        is_faiss = faiss and isinstance(instance.tree, faiss.Index)
-        is_voyager = voyager and isinstance(instance.tree, voyager.Index)
+        # Check backend type based on the tree object type safely
+        is_annoy = AnnoyIndex is not None and isinstance(instance.tree, AnnoyIndex)
+        is_faiss = faiss is not None and isinstance(instance.tree, faiss.Index)
+        is_voyager = voyager is not None and isinstance(instance.tree, voyager.Index)
 
         if is_annoy:
             instance.tree.save(f"{common_prefix}.ann")
