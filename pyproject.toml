@@ -45,10 +45,9 @@ dependencies = [
 [project.optional-dependencies]
 annoy = ["annoy>=1.17,<2"]
 voyager-pypi = ["voyager>=2.0"]  # For Python 3.8-3.12
-voyager-git = ["voyager @ git+https://github.com/spotify/voyager.git#subdirectory=python"]  # For Python 3.13+
 voyager = ["voyager>=2.0"]  # Default to PyPI
 all = ["annoy>=1.17,<2", "voyager>=2.0"]
-all-git = ["annoy>=1.17,<2", "voyager @ git+https://github.com/spotify/voyager.git#subdirectory=python"]
+all-git = ["annoy>=1.17,<2"]
 
 [project.urls]
 Homepage = "https://github.com/YingfanWang/PaCMAP"
