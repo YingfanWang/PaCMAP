@@ -2045,7 +2045,7 @@ wheels = [
 
 [[package]]
 name = "pacmap"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "faiss-cpu", version = "1.8.0.post1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
