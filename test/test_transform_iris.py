@@ -5,16 +5,7 @@ A script that tests the transform feature of pacmap
 import pacmap
 import numpy as np
 import pytest
-from test_utils import generate_combined_figure
-from sklearn import datasets
-
-
-@pytest.fixture
-def iris_data():
-    """Load iris dataset for testing."""
-    iris = datasets.load_iris()
-    return iris["data"], iris["target"]
-
+from test_utils import generate_combined_figure, iris_data
 
 def test_iris_transform_with_tree(iris_data):
     """Test PaCMAP transform functionality with save_tree=True."""

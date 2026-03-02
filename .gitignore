@@ -2,4 +2,7 @@
 /test/output/
 .DS_store
 .vscode
+.venv
+build/
+
 __pycache__/
