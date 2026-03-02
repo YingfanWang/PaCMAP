@@ -143,6 +143,38 @@ def debug_nondeterminism(b, c):
         if fp_diff > 1e-8 or mn_diff > 1e-8:
             print(f"Pairs are not deterministic. FP diff: {fp_diff}, MN diff: {mn_diff}")
 
+@pytest.mark.parametrize("backend", get_available_backends())
+def test_pacmap_save(tmp_path, backend, sample_data):
+    """Test that PaCMAP instances are saved correctly with their respective backend trees."""
+    print(f"Testing save functionality for backend: {backend}")
+    
+    # Initialize and fit PaCMAP with save_tree=True
+    pm = pacmap.PaCMAP(n_components=2, save_tree=True, knn_backend=backend)
+    pm.fit(sample_data)
+    
+    # Define save path prefix using pytest's tmp_path fixture
+    save_prefix = tmp_path / f"test_save_{backend}"
+    
+    # Call the save function
+    pacmap.save(pm, str(save_prefix))
+    
+    # 1. Assert the pickle file was created
+    pkl_path = save_prefix.with_suffix(".pkl")
+    assert pkl_path.exists(), f"Pickle file was not created for {backend}"
+    assert pkl_path.stat().st_size > 0, f"Pickle file is empty for {backend}"
+    
+    # 2. Assert the backend-specific tree index file was created
+    ext_map = {
+        'annoy': '.ann',
+        'faiss': '.faiss',
+        'voyager': '.voyager'
+    }
+    
+    tree_ext = ext_map.get(backend, '.ann') # Fallback to .ann as default
+    tree_path = save_prefix.with_suffix(tree_ext)
+    
+    assert tree_path.exists(), f"Tree index file ({tree_ext}) was not created for {backend}"
+    assert tree_path.stat().st_size > 0, f"Tree index file is empty for {backend}"
 
 if __name__ == "__main__":
     print("Starting PaCMAP backend tests via pytest...")
