@@ -116,7 +116,7 @@ ax.scatter(X_transformed[:, 0], X_transformed[:, 1], cmap="Spectral", c=y, s=0.6
 
 You can also use PaCMAP in R with the [reticulate package](https://rstudio.github.io/reticulate/).
 We provide a sample [R notebook](./demo/pacmap_Rnotebook_example.Rmd) that demonstrates
-how PaCMAP can be called in R for visualization. We also provide a [Seurat Intergation]([https://github.com/williamsyy/gdc-frontend-framework](https://github.com/williamsyy/seurat-wrappers-pacmap) that allows seamless integration with
+how PaCMAP can be called in R for visualization. We also provide a [Seurat Integration](https://github.com/williamsyy/seurat-wrappers-pacmap) that allows seamless integration with
 [Seurat](https://github.com/satijalab/seurat) Objects for single cell genomics.
 
 ### <a name='UsingPaCMAPinRust'></a>Using PaCMAP in Rust
