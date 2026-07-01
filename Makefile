@@ -19,7 +19,8 @@ test:
 		test/test_randomness.py \
 		test/test_transform.py \
 		test/test_transform_tree.py \
-		test/test_metric.py
+		test/test_metric.py \
+		test/test_precomputed.py
 
 clean:
 	rm -rf build/
