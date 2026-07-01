@@ -1,5 +1,9 @@
 # Release Notes
 
+- 0.10.0
+
+  Add support for user-defined precomputed distance matrices via `distance="precomputed"` for both `PaCMAP` and `LocalMAP` ([12](https://github.com/YingfanWang/PaCMAP/issues/12)). When enabled, the input to `fit`/`fit_transform` is a square `(n_samples, n_samples)` distance matrix instead of a feature matrix. See the `How to use a precomputed distance matrix` section in the README.
+
 - 0.9.0
 
   Add `Voyager` and `FAISS` backend within the package ([136](https://github.com/YingfanWang/PaCMAP/issues/136) and [94](https://github.com/YingfanWang/PaCMAP/issues/94)) based on the pull request from @Tyrannas in https://github.com/YingfanWang/PaCMAP/pull/137.
