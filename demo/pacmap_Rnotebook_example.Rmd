@@ -9,26 +9,70 @@ This notebook demonstrates the ability to utilize PaCMAP in R with the
 [reticulate package](https://rstudio.github.io/reticulate/).
 
 ## Installation
-To utilize PaCMAP, you need to install PaCMAP on a local python environment. 
-The following cell assumes that you have installed PaCMAP in a 
-[conda](https://docs.conda.io/en/latest/) environment. 
 
-**We strongly recommend you to use conda to manage your environment, and create
-a environment for pacmap.**
+To use PaCMAP from R, a local Python environment with the `pacmap` package must
+be available. We strongly recommend managing this environment with
+[conda](https://docs.conda.io/en/latest/) and dedicating a separate environment
+to PaCMAP.
 
-You can install PaCMAP via executing the following commands in your terminal:
-- `conda install pacmap -c conda-forge` through conda-forge
-- `pip install pacmap` through PyPI.
+Follow the steps below.
 
-## Loading the libraries
-First, let us load the required libraries.
+### 1. Create a dedicated Conda environment
+
+In your terminal, create and activate a new environment (named `pacmap` in this
+example):
+
+```{bash}
+conda create -n pacmap python
+conda activate pacmap
+```
+
+### 2. Install PaCMAP into that environment
+
+Install PaCMAP using either of the following commands:
+
+- `conda install pacmap -c conda-forge` (via conda-forge), or
+- `pip install pacmap` (via PyPI).
+
+### 3. Locate the Conda executable
+
+Identify the full path to your `conda` executable (e.g., `conda.exe` on Windows,
+`conda` on macOS/Linux). This path will be passed to `reticulate::use_condaenv()`
+in the next step.
+
+### 4. Verify the Conda executable path
+
+Before proceeding, verify that the path is correct by running the following
+command in your terminal, substituting the actual path:
+
+```{bash}
+"........./conda.exe" env list
+```
+
+If the environment you created (e.g., `pacmap`) appears in the output, the path
+to `conda.exe` is correct.
+
+### 5. Point `reticulate` to the correct Conda executable
+
+In R, ensure that the `conda` argument of `reticulate::use_condaenv()` points to
+the executable verified in Step 4, and that the environment name matches the one
+created in Step 1:
 
 ```{r}
-# Install Reticulate if you haven't done so
+# Install reticulate if you haven't done so
 # install.packages("reticulate")
-reticulate::use_condaenv("your_env_name", conda="your_conda_executable_path", required = TRUE)
+reticulate::use_condaenv(
+  "pacmap",
+  conda = "........./conda.exe",
+  required = TRUE
+)
 pacmap <- reticulate::import("pacmap")
 ```
+
+> **Note:** If R fails to load PaCMAP, the root cause is typically an incorrect
+> Python environment configuration rather than an issue in R itself. Re-verify
+> the `conda` executable path and the environment name before troubleshooting
+> further.
 
 Loading PaCMAP can lead to fatal error if your PATH variables have not been
 configured properly. In some cases, it could lead to error such as:
