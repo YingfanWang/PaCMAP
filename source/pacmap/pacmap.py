@@ -207,6 +207,58 @@ def sample_MN_pair_deterministic(X, n_MN, random_state, option=0):
     return pair_MN
 
 
+@numba.njit("i4[:,:](f4[:,:],i4)", nogil=True, cache=True)
+def sample_MN_pair_precomputed(dist_matrix, n_MN):
+    '''Sample Mid Near pairs using a precomputed distance matrix.'''
+    n = dist_matrix.shape[0]
+    pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
+    for i in numba.prange(n):
+        for j in range(n_MN):
+            sampled = sample_FP(
+                n_samples=6,
+                maximum=n,
+                reject_ind=pair_MN[i * n_MN:i * n_MN + j, 1],
+                self_ind=i
+            )
+            dist_list = np.empty((6), dtype=np.float32)
+            for t in range(sampled.shape[0]):
+                dist_list[t] = dist_matrix[i, sampled[t]]
+            min_dic = np.argmin(dist_list)
+            dist_list = np.delete(dist_list, [min_dic])
+            sampled = np.delete(sampled, [min_dic])
+            picked = sampled[np.argmin(dist_list)]
+            pair_MN[i * n_MN + j][0] = i
+            pair_MN[i * n_MN + j][1] = picked
+    return pair_MN
+
+
+@numba.njit("i4[:,:](f4[:,:],i4,i4)", nogil=True, cache=True)
+def sample_MN_pair_deterministic_precomputed(dist_matrix, n_MN, random_state):
+    '''Sample Mid Near pairs from a precomputed distance matrix using the given random state.'''
+    n = dist_matrix.shape[0]
+    pair_MN = np.empty((n * n_MN, 2), dtype=np.int32)
+    for i in numba.prange(n):
+        for j in range(n_MN):
+            # Shifting the seed to prevent sampling the same pairs
+            np.random.seed(random_state + i * n_MN + j)
+            sampled = sample_FP(
+                n_samples=6,
+                maximum=n,
+                reject_ind=pair_MN[i * n_MN:i * n_MN + j, 1],
+                self_ind=i
+            )
+            dist_list = np.empty((6), dtype=np.float32)
+            for t in range(sampled.shape[0]):
+                dist_list[t] = dist_matrix[i, sampled[t]]
+            min_dic = np.argmin(dist_list)
+            dist_list = np.delete(dist_list, [min_dic])
+            sampled = np.delete(sampled, [min_dic])
+            picked = sampled[np.argmin(dist_list)]
+            pair_MN[i * n_MN + j][0] = i
+            pair_MN[i * n_MN + j][1] = picked
+    return pair_MN
+
+
 @numba.njit("i4[:,:](f4[:,:],i4[:,:],i4,i4)", parallel=True, nogil=True, cache=True)
 def sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP):
     '''Sample Further pairs.'''
@@ -367,6 +419,13 @@ def find_weight(w_MN_init, itr, *, num_iters):
 def preprocess_X(X, distance, apply_pca, verbose, seed, high_dim, low_dim):
     '''Preprocess a dataset.
     '''
+    if distance == "precomputed":
+        # X is already an (n, n) distance matrix. No scaling, centering or PCA
+        # should be applied to it, and there is no tsvd transformer to fit.
+        print_verbose(
+            "distance='precomputed': X is treated as a distance matrix; "
+            "skipping normalization and PCA.", verbose)
+        return X, False, None, 0, 0, 0
     tsvd = None
     pca_solution = False
     if distance != "hamming" and high_dim > 100 and apply_pca:
@@ -670,6 +729,22 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
     return tree, nbrs, knn_distances
 
 
+def compute_nearest_neighbors_precomputed(dist_matrix, n_neighbors):
+    '''Compute the nearest neighbors directly from a precomputed square
+    distance matrix.
+
+    The diagonal is masked out so that a point is never selected as its own
+    neighbor, regardless of whether the diagonal is exactly zero.
+    '''
+    n = dist_matrix.shape[0]
+    D = np.array(dist_matrix, dtype=np.float32, copy=True)
+    np.fill_diagonal(D, np.inf)
+    nbrs = np.argsort(D, axis=1)[:, :n_neighbors].astype(np.int32)
+    knn_distances = np.take_along_axis(D, nbrs, axis=1).astype(np.float32)
+    # No index tree is built for precomputed distances.
+    return None, nbrs, knn_distances
+
+
 def generate_pair(
         X,
         n_neighbors,
@@ -714,9 +789,13 @@ def generate_pair(
             n_MN = 0
             n_FP = 0
     
-    tree, nbrs, knn_distances = compute_nearest_neighbors(
-        X, n_neighbors_extra, distance, knn_backend, _RANDOM_STATE
-    )
+    if distance == 'precomputed':
+        tree, nbrs, knn_distances = compute_nearest_neighbors_precomputed(
+            X, n_neighbors_extra)
+    else:
+        tree, nbrs, knn_distances = compute_nearest_neighbors(
+            X, n_neighbors_extra, distance, knn_backend, _RANDOM_STATE
+        )
 
     print_verbose("Found nearest neighbor", verbose)
     sig = np.maximum(np.mean(knn_distances[:, 3:6], axis=1), 1e-10)
@@ -724,14 +803,27 @@ def generate_pair(
     scaled_dist = scale_dist(knn_distances, sig, nbrs)
     print_verbose("Found scaled dist", verbose)
     pair_neighbors = sample_neighbors_pair(X, scaled_dist, nbrs, n_neighbors)
-    
-    option = distance_to_option(distance=distance)
-    
+
+    if distance == 'precomputed':
+        # Mid-near pairs are chosen by looking up entries of the distance
+        # matrix directly rather than recomputing distances from features.
+        if _RANDOM_STATE is None:
+            pair_MN = sample_MN_pair_precomputed(X, n_MN)
+        else:
+            pair_MN = sample_MN_pair_deterministic_precomputed(
+                X, n_MN, _RANDOM_STATE)
+    else:
+        option = distance_to_option(distance=distance)
+        if _RANDOM_STATE is None:
+            pair_MN = sample_MN_pair(X, n_MN, option)
+        else:
+            pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
+
+    # Further pairs are sampled uniformly at random and only rely on indices,
+    # so the same routine works for both feature and precomputed inputs.
     if _RANDOM_STATE is None:
-        pair_MN = sample_MN_pair(X, n_MN, option)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
-        pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
         pair_FP = sample_FP_pair_deterministic(
             X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
     return pair_neighbors, pair_MN, pair_FP, tree
@@ -749,13 +841,22 @@ def generate_pair_no_neighbors(
     '''Generate mid-near pairs and further pairs for a given dataset.
     This function is useful when the nearest neighbors comes from a given set.
     '''
-    option = distance_to_option(distance=distance)
+    if distance == 'precomputed':
+        if _RANDOM_STATE is None:
+            pair_MN = sample_MN_pair_precomputed(X, n_MN)
+        else:
+            pair_MN = sample_MN_pair_deterministic_precomputed(
+                X, n_MN, _RANDOM_STATE)
+    else:
+        option = distance_to_option(distance=distance)
+        if _RANDOM_STATE is None:
+            pair_MN = sample_MN_pair(X, n_MN, option)
+        else:
+            pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
 
     if _RANDOM_STATE is None:
-        pair_MN = sample_MN_pair(X, n_MN, option)
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
-        pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
         pair_FP = sample_FP_pair_deterministic(
             X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
     return pair_neighbors, pair_MN, pair_FP
@@ -1070,6 +1171,9 @@ class PaCMAP(BaseEstimator):
 
     distance: string, default="euclidean"
         Distance metric used for high-dimensional space. Allowed metrics include euclidean, manhattan, angular, hamming.
+        Set to "precomputed" to pass a user-provided square (n_samples, n_samples) distance matrix as ``X`` to
+        ``fit`` / ``fit_transform`` instead of a feature matrix. When "precomputed" is used, ``apply_pca`` is ignored,
+        the default initialization becomes 'random' (init='pca' is not available), and ``transform`` is not supported.
 
     lr: float, default=1.0
         Learning rate of the Adam optimizer for embedding.
@@ -1083,7 +1187,7 @@ class PaCMAP(BaseEstimator):
         Whether to print additional information during initialization and fitting.
 
     apply_pca: bool, default=True
-        Whether to apply PCA on the data before pair construction.
+        Whether to apply PCA on the data before pair construction. Ignored when ``distance="precomputed"``.
 
     intermediate: bool, default=False
         Whether to return intermediate state of the embedding during optimization.
@@ -1100,10 +1204,11 @@ class PaCMAP(BaseEstimator):
     save_tree: bool, default=False
         Whether to save the annoy index tree after finding the nearest neighbor pairs.
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
-        
+
     knn_backend: str, default="faiss"
         The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
         'faiss' is the default and generally faster. 'annoy' and 'voyager' are also available.
+        Ignored when ``distance="precomputed"``.
     '''
 
     def __init__(self,
@@ -1159,7 +1264,7 @@ class PaCMAP(BaseEstimator):
             _RANDOM_STATE = None  # Reset random state
 
         # Raise error on initialization with an incorrect distance metric.
-        VALID_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot"}
+        VALID_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot", "precomputed"}
         if self.distance not in VALID_METRICS:
             raise NotImplementedError(
                 "`distance` must be one of {}".format(", ".join(VALID_METRICS))
@@ -1176,7 +1281,7 @@ class PaCMAP(BaseEstimator):
         if self.distance == "hamming" and apply_pca:
             logger.warning(
                 "apply_pca = True for Hamming distance. This option will be ignored.")
-        if not self.apply_pca:
+        if not self.apply_pca and self.distance != "precomputed":
             logger.warning(
                 "Running NN Backend on high-dimensional data. Nearest-neighbor search may be slow!")
         
@@ -1230,6 +1335,31 @@ class PaCMAP(BaseEstimator):
             else:
                 raise ValueError(msg)
 
+    def _check_precomputed(self, X, init):
+        '''Validate the input and resolve the initialization when
+        ``distance="precomputed"``.
+
+        The input must be a square (n_samples, n_samples) distance matrix.
+        Since a feature representation is unavailable, PCA initialization is not
+        possible: an explicit ``init='pca'`` is rejected, and the default
+        (``init is None``) falls back to random initialization.
+        '''
+        if self.distance != "precomputed":
+            return init
+        if X.ndim != 2 or X.shape[0] != X.shape[1]:
+            raise ValueError(
+                "When distance='precomputed', X must be a square "
+                "(n_samples, n_samples) distance matrix, but got shape "
+                f"{X.shape}.")
+        if init is None:
+            init = "random"
+        elif isinstance(init, str) and init == "pca":
+            raise ValueError(
+                "init='pca' is not supported when distance='precomputed', "
+                "because no feature representation is available. Please use "
+                "init='random' or provide a numpy.ndarray for init.")
+        return init
+
     def fit(self, X, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
 
@@ -1238,17 +1368,21 @@ class PaCMAP(BaseEstimator):
         X: numpy.ndarray
             The high-dimensional dataset that is being projected.
             An embedding will get created based on parameters of the PaCMAP instance.
+            When ``distance="precomputed"``, ``X`` must instead be a square
+            (n_samples, n_samples) matrix of pairwise distances.
 
         init: str, optional
             One of ['pca', 'random']. Initialization of the embedding, default='pca'.
             If 'pca', then the low dimensional embedding is initialized to the PCA mapped dataset.
             If 'random', then the low dimensional embedding is initialized with a Gaussian distribution.
+            When ``distance="precomputed"``, 'pca' is unavailable and the default is 'random'.
 
         save_pairs: bool, optional
             Whether to save the pairs that are sampled from the dataset. Useful for reproducing results.
         '''
 
         X = np.copy(X).astype(np.float32)
+        init = self._check_precomputed(X, init)
         # Preprocess the dataset
         n, dim = X.shape
         if n <= 1:
@@ -1353,6 +1487,14 @@ class PaCMAP(BaseEstimator):
 
         # If the estimator is not fitted, then raise NotFittedError
         check_is_fitted(estimator=self, attributes="embedding_")
+
+        if self.distance == "precomputed":
+            raise NotImplementedError(
+                "transform() is not supported when distance='precomputed'. "
+                "Fitting with a precomputed distance matrix does not retain a "
+                "feature representation or index that could be queried for new "
+                "points. Please recompute the embedding with fit/fit_transform "
+                "on the combined distance matrix instead.")
 
         # Preprocess the data
         X = np.copy(X).astype(np.float32)
@@ -1665,6 +1807,9 @@ class LocalMAP(PaCMAP):
 
     distance: string, default="euclidean"
         Distance metric used for high-dimensional space. Allowed metrics include euclidean, manhattan, angular, hamming.
+        Set to "precomputed" to pass a user-provided square (n_samples, n_samples) distance matrix as ``X`` to
+        ``fit`` / ``fit_transform`` instead of a feature matrix. When "precomputed" is used, ``apply_pca`` is ignored,
+        the default initialization becomes 'random' (init='pca' is not available), and ``transform`` is not supported.
 
     lr: float, default=1.0
         Learning rate of the Adam optimizer for embedding.
@@ -1678,7 +1823,7 @@ class LocalMAP(PaCMAP):
         Whether to print additional information during initialization and fitting.
 
     apply_pca: bool, default=True
-        Whether to apply PCA on the data before pair construction.
+        Whether to apply PCA on the data before pair construction. Ignored when ``distance="precomputed"``.
 
     intermediate: bool, default=False
         Whether to return intermediate state of the embedding during optimization.
@@ -1695,7 +1840,7 @@ class LocalMAP(PaCMAP):
     save_tree: bool, default=False
         Whether to save the annoy index tree after finding the nearest neighbor pairs.
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
-    
+
     low_dist_thres [NEW FOR LocalMAP]: float, default=10
         The Proximal Cluster Distance Commons, the acceptance distance threshold for selecting local FP with distance no 
         larger than the average low-dimension distance among all nearest clusters pair.
@@ -1750,6 +1895,7 @@ class LocalMAP(PaCMAP):
         '''
 
         X = np.copy(X).astype(np.float32)
+        init = self._check_precomputed(X, init)
         # Preprocess the dataset
         n, dim = X.shape
         if n <= 0:

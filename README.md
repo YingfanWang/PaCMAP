@@ -152,6 +152,7 @@ The initialization is also important to the result, but it's a parameter of the 
 Other parameters include:
 
 - `num_iters`: number of iterations. Default to 450. 450 iterations is enough for most dataset to converge.
+- `distance`: the distance metric used to build the k-Nearest Neighbor graph in the high-dimensional space. One of `"euclidean"`, `"manhattan"`, `"angular"`, `"hamming"`, or `"precomputed"`. Default to `"euclidean"`. When set to `"precomputed"`, the input `X` passed to `fit`/`fit_transform` is treated as a square `(n_samples, n_samples)` matrix of pairwise distances rather than a feature matrix (see [How to use a precomputed distance matrix](#Howtouseaprecomputeddistancematrix)).
 - `pair_neighbors`, `pair_MN` and `pair_FP`: pre-specified neighbor pairs, mid-near points, and further pairs. Allows user to use their own graphs. Default to `None`.
 - `verbose`: print the progress of pacmap. Default to `False`
 - `lr`: learning rate of the AdaGrad optimizer. Default to 1.
@@ -167,6 +168,28 @@ Similar to the scikit-learn API, the PaCMAP instance can generate embedding for 
 ## <a name='Howtouseuser-specifiednearestneighbor'></a>How to use user-specified nearest neighbor
 
 In version 0.4, we have provided a new option to allow users to use their own nearest neighbors when mapping large-scale datasets. Please see the [demo](./demo/specify_nn_demo.py) for a detailed walkthrough about how to use PaCMAP with the user-specified nearest neighbors.
+
+## <a name='Howtouseaprecomputeddistancematrix'></a>How to use a precomputed distance matrix
+
+If you already have a custom pairwise distance matrix (for example, a domain-specific dissimilarity that is not one of the built-in metrics), you can pass it directly to PaCMAP by setting `distance="precomputed"`. In this mode, the input to `fit`/`fit_transform` is a square `(n_samples, n_samples)` distance matrix instead of a feature matrix:
+
+```python
+import numpy as np
+import pacmap
+from sklearn.metrics import pairwise_distances
+
+# your_data: (n_samples, n_features)
+distance_matrix = pairwise_distances(your_data, metric="cosine")  # or any custom distances
+
+reducer = pacmap.PaCMAP(distance="precomputed", random_state=42)
+embedding = reducer.fit_transform(distance_matrix)  # (n_samples, n_components)
+```
+
+Notes:
+- The matrix must be square; only its rows are used to find each point's nearest neighbors, so it does not need to be perfectly symmetric.
+- `apply_pca` is ignored (there is no feature representation to reduce), and the default initialization is `"random"` (`init="pca"` is unavailable). You may still pass your own ndarray as `init`.
+- `transform` is not supported for a model fit with a precomputed matrix, because no feature representation or index is retained for embedding new points. To embed additional points, recompute the distance matrix for the combined set and call `fit_transform` again.
+- `LocalMAP` supports `distance="precomputed"` as well.
 
 ## <a name='Reproducingourexperiments'></a>Reproducing our experiments
 
