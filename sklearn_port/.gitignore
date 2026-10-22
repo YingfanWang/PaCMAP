@@ -1,0 +1,6 @@
+build/
+*.egg-info/
+pacmap_sklearn/_pacmap_utils.c
+pacmap_sklearn/*.so
+pacmap_sklearn/*.pyd
+__pycache__/

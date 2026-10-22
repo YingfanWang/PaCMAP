@@ -1,0 +1,14 @@
+# Stanza to add to sklearn/manifold/meson.build when the port is moved into
+# scikit-learn. Not used by the standalone build in this directory.
+#
+# Inside scikit-learn, replace the local ctypedefs at the top of
+# _pacmap_utils.pyx with:
+#     from ..utils._typedefs cimport intp_t, float64_t
+
+py.extension_module(
+  '_pacmap_utils',
+  cython_gen.process('_pacmap_utils.pyx'),
+  dependencies: [openmp_dep],
+  subdir: 'sklearn/manifold',
+  install: true
+)
