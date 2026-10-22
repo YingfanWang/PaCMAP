@@ -40,9 +40,14 @@ cdef enum:
     MN_PAIR = 1
     FP_PAIR = 2
 
-# Salts so the MN and FP streams are independent for the same row
+# Salts so the MN, FP and LocalMAP-resampling streams are independent
 cdef uint64_t MN_SALT = 0x6A09E667F3BCC909ULL
 cdef uint64_t FP_SALT = 0xBB67AE8584CAA73BULL
+cdef uint64_t NEARBY_SALT = 0x3C6EF372FE94F82BULL
+
+# LocalMAP: draws per point after which unresolved FP slots keep the old pair
+cdef enum:
+    NEARBY_MAX_DRAWS = 100
 
 # Number of candidates drawn per mid-near pair (Wang et al., 2021)
 cdef enum:
@@ -230,6 +235,128 @@ def sample_fp_pairs(const intp_t[:, ::1] neighbors, intp_t n_fp,
     return out
 
 
+def resample_fp_nearby(const float64_t[:, ::1] Y,
+                       const intp_t[:, ::1] neighbors,
+                       const intp_t[:, ::1] old_fp,
+                       float64_t low_dist_thres,
+                       uint64_t seed, uint64_t round_id, int n_threads):
+    """LocalMAP: resample further pairs among points close in the embedding.
+
+    Mirrors ``sample_FP_nearby`` / ``sample_FP_pair_nearby`` of the reference
+    implementation, including its control flow:
+
+    * a draw is rejected if it is ``i`` itself, already chosen for ``i`` in
+      this round, one of ``i``'s NN partners, or farther than
+      ``low_dist_thres`` from ``y_i`` in the embedding;
+    * a per-slot draw counter is checked only after a duplicate / NN
+      rejection or an acceptance (not after a self or too-far rejection);
+      if it exceeds 100 at that point the slot keeps its previous partner
+      from ``old_fp``.
+
+    Randomness comes from a per-(row, round) counter-based stream, so the
+    result does not depend on ``n_threads``.
+    """
+    cdef intp_t n_samples = neighbors.shape[0]
+    cdef intp_t n_nn = neighbors.shape[1]
+    cdef intp_t n_fp = old_fp.shape[0] // n_samples
+    cdef intp_t dim = Y.shape[1]
+    out = np.empty((n_samples * n_fp, 2), dtype=np.intp)
+    cdef intp_t[:, ::1] pairs = out
+    cdef intp_t i, k, t, j, c
+    cdef intp_t count
+    cdef bint reject
+    cdef float64_t d, diff, thres_sq = low_dist_thres * low_dist_thres
+    cdef uint64_t state
+
+    if n_fp == 0:
+        return out
+
+    for i in prange(n_samples, nogil=True, num_threads=n_threads,
+                    schedule="static"):
+        state = _seed_stream(seed, NEARBY_SALT ^ (round_id * 0x9E3779B97F4A7C15ULL),
+                             <uint64_t>i)
+        for k in range(n_fp):
+            count = 0
+            reject = True
+            j = -1
+            while reject:
+                j = _randint(&state, n_samples)
+                count = count + 1
+                if j == i:
+                    continue
+                check_count = True
+                t = 0
+                while t < k:
+                    if pairs[i * n_fp + t, 1] == j:
+                        break
+                    t = t + 1
+                if t == k:  # not a duplicate
+                    if not _contains(&neighbors[i, 0], n_nn, j):
+                        d = 0.0
+                        for c in range(dim):
+                            diff = Y[i, c] - Y[j, c]
+                            d = d + diff * diff
+                        if d > thres_sq:
+                            continue  # too far: no count check (as reference)
+                        reject = False
+                if count > NEARBY_MAX_DRAWS:
+                    j = -1
+                    reject = False            # -1 is kept as a sentinel during this row so later duplicate
+            # checks compare against it, exactly as the reference does.
+            pairs[i * n_fp + k, 0] = i
+            pairs[i * n_fp + k, 1] = j
+        for k in range(n_fp):
+            if pairs[i * n_fp + k, 1] == -1:
+                pairs[i * n_fp + k, 1] = old_fp[i * n_fp + k, 1]
+    return out
+
+
+# --------------------------------------------------------------------------
+# Incidence list
+# --------------------------------------------------------------------------
+
+def build_incidence(const intp_t[:, ::1] pairs, const signed char[::1] types,
+                    intp_t n_samples):
+    """CSR incidence list holding each pair once per endpoint.
+
+    Counting sort on the endpoint index: O(n_samples + n_pairs) and a pure
+    function of the input, so the gradient accumulation order is fixed.
+    Entries of row ``a`` keep the order of ``pairs``: first the pairs where
+    ``a`` is the left endpoint, then those where it is the right endpoint.
+    """
+    cdef intp_t n_pairs = pairs.shape[0]
+    indptr_arr = np.zeros(n_samples + 1, dtype=np.intp)
+    other_arr = np.empty(2 * n_pairs, dtype=np.intp)
+    types_arr = np.empty(2 * n_pairs, dtype=np.int8)
+    cdef intp_t[::1] indptr = indptr_arr
+    cdef intp_t[::1] other = other_arr
+    cdef signed char[::1] out_types = types_arr
+    cdef intp_t p, a, b, pos
+    cdef intp_t[::1] cursor
+
+    with nogil:
+        for p in range(n_pairs):
+            indptr[pairs[p, 0] + 1] += 1
+            indptr[pairs[p, 1] + 1] += 1
+        for a in range(n_samples):
+            indptr[a + 1] += indptr[a]
+    cursor = indptr_arr[:n_samples].copy()
+    with nogil:
+        for p in range(n_pairs):
+            a = pairs[p, 0]
+            pos = cursor[a]
+            other[pos] = pairs[p, 1]
+            out_types[pos] = types[p]
+            cursor[a] = pos + 1
+        for p in range(n_pairs):
+            b = pairs[p, 1]
+            pos = cursor[b]
+            other[pos] = pairs[p, 0]
+            out_types[pos] = types[p]
+            cursor[b] = pos + 1
+    return indptr_arr, other_arr, types_arr
+
+
 # --------------------------------------------------------------------------
 # Gradient
 # --------------------------------------------------------------------------
@@ -241,8 +368,13 @@ def pacmap_gradient(const float64_t[:, ::1] Y,
                     float64_t w_nn, float64_t w_mn, float64_t w_fp,
                     float64_t[:, ::1] grad,
                     float64_t[::1] node_loss,
-                    int n_threads):
+                    int n_threads,
+                    float64_t nn_recip_coef=0.0):
     """Gradient of the PaCMAP loss, written into ``grad``.
+
+    If ``nn_recip_coef > 0`` (LocalMAP phase 3), the NN coefficient is
+    additionally multiplied by ``nn_recip_coef / sqrt(d)``; the reported
+    loss is left unchanged, as in the reference implementation.
 
     The incidence list (``indptr``, ``other``, ``pair_type``) holds every pair
     once per endpoint, so ``grad[a]`` is a gather over a fixed sequence and
@@ -284,6 +416,8 @@ def pacmap_gradient(const float64_t[:, ::1] Y,
             if t == NN_PAIR:
                 loss = loss + w_nn * d / (10.0 + d)
                 coef = w_nn * 20.0 / ((10.0 + d) * (10.0 + d))
+                if nn_recip_coef > 0.0:
+                    coef = coef * nn_recip_coef / sqrt(d)
             elif t == MN_PAIR:
                 loss = loss + w_mn * d / (10000.0 + d)
                 coef = w_mn * 20000.0 / ((10000.0 + d) * (10000.0 + d))

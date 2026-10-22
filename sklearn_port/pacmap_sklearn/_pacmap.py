@@ -1,4 +1,4 @@
-"""Pairwise Controlled Manifold Approximation Projection (PaCMAP).
+"""PaCMAP and LocalMAP.
 
 Laid out as ``sklearn/manifold/_pacmap.py`` would be: only numpy, scipy and
 scikit-learn at runtime, compiled kernels in ``_pacmap_utils.pyx``.
@@ -25,7 +25,13 @@ from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
 from sklearn.utils._param_validation import Interval, StrOptions
 from sklearn.utils.validation import check_non_negative, validate_data
 
-from ._pacmap_utils import pacmap_gradient, sample_fp_pairs, sample_mn_pairs
+from ._pacmap_utils import (
+    build_incidence,
+    pacmap_gradient,
+    resample_fp_nearby,
+    sample_fp_pairs,
+    sample_mn_pairs,
+)
 
 # Metric codes, mirrored in _pacmap_utils.pyx
 _METRIC_CODES = {
@@ -44,6 +50,14 @@ _N_EXTRA_NEIGHBORS = 50  # extra candidates searched before scaled re-ranking
 _W_MN_INIT = 1000.0  # mid-near weight at iteration 0
 _ADAM_BETA1, _ADAM_BETA2, _ADAM_EPS = 0.9, 0.999, 1e-7
 
+# LocalMAP (Wang et al., 2025): FP pairs are resampled every this many
+# iterations during phase 3.
+_LOCALMAP_RESAMPLE_EVERY = 10
+
+# Rashomon neighbor refinement (Sun et al., 2026): size m of the candidate
+# neighbor set that the k refined neighbors are chosen from.
+_N_RASHOMON_CANDIDATES = 50
+
 
 def _phase_weights(itr, n_iter_phase1, n_iter_phase2):
     """(w_nn, w_mn, w_fp) at iteration ``itr`` of the three-phase schedule."""
@@ -56,178 +70,72 @@ def _phase_weights(itr, n_iter_phase1, n_iter_phase2):
 
 
 def _incidence_list(pairs, pair_types, n_samples):
-    """CSR incidence structure listing each pair once per endpoint.
-
-    Ordering is a stable sort on the endpoint index, so it is a pure function
-    of the input and gradient accumulation order is fixed.
-    """
-    rows = np.concatenate([pairs[:, 0], pairs[:, 1]])
-    other = np.concatenate([pairs[:, 1], pairs[:, 0]])
-    types = np.concatenate([pair_types, pair_types])
-    order = np.argsort(rows, kind="stable")
-    indptr = np.zeros(n_samples + 1, dtype=np.intp)
-    np.cumsum(np.bincount(rows, minlength=n_samples), out=indptr[1:])
-    return (
-        indptr,
-        np.ascontiguousarray(other[order], dtype=np.intp),
-        np.ascontiguousarray(types[order], dtype=np.int8),
+    """CSR incidence structure listing each pair once per endpoint."""
+    return build_incidence(
+        np.ascontiguousarray(pairs, dtype=np.intp),
+        np.ascontiguousarray(pair_types, dtype=np.int8),
+        n_samples,
     )
 
 
-class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
-    """Pairwise Controlled Manifold Approximation Projection.
+def _pair_types(n_nn, n_mn, n_fp):
+    return np.concatenate(
+        [
+            np.full(n_nn, _NN, dtype=np.int8),
+            np.full(n_mn, _MN, dtype=np.int8),
+            np.full(n_fp, _FP, dtype=np.int8),
+        ]
+    )
 
-    PaCMAP embeds data by optimizing a loss over three sets of point pairs:
-    nearest-neighbor (NN) pairs that preserve local structure, mid-near (MN)
-    pairs that preserve global structure, and further (FP) pairs that keep
-    unrelated points apart. Optimization runs in three phases with a fixed
-    weight schedule: MN pairs dominate early to set the global layout, then
-    are switched off so NN and FP pairs refine local structure.
 
-    Read more in the :ref:`User Guide <pacmap>`.
+class _Adam:
+    """Adam with the bias correction folded into the step size, as in the
+    reference implementation."""
 
-    Parameters
-    ----------
-    n_components : int, default=2
-        Dimension of the embedded space.
-
-    n_neighbors : int or None, default=10
-        Number of NN pairs per point. If None, uses 10 for ``n_samples <=
-        10000`` and ``round(10 + 15 * (log10(n_samples) - 4))`` otherwise.
-
-    mn_ratio : float, default=0.5
-        Number of MN pairs per point, as a ratio of ``n_neighbors``.
-
-    fp_ratio : float, default=2.0
-        Number of FP pairs per point, as a ratio of ``n_neighbors``.
-
-    metric : {"euclidean", "manhattan", "angular", "hamming", \
-            "precomputed"}, default="euclidean"
-        Metric in the input space. "angular" is
-        :math:`\\sqrt{2 - 2\\cos\\theta}`. If "precomputed", ``X`` is a dense
-        square matrix of pairwise distances.
-
-    learning_rate : float, default=1.0
-        Adam step size.
-
-    num_iters : int or tuple of 3 int, default=(100, 100, 250)
-        Iterations in each of the three phases. An int ``k`` means
-        ``(100, 100, k)``.
-
-    init : {"pca", "random"} or ndarray of shape (n_samples, n_components), \
-            default="pca"
-        Initialization of the embedding. "pca" cannot be used with
-        ``metric="precomputed"``. An array is standardized and scaled by
-        1e-4.
-
-    apply_pca : bool, default=True
-        If True and ``n_features > 100``, center the data and project it onto
-        its top 100 principal components before searching for neighbors.
-        Ignored for ``metric`` in {"hamming", "precomputed"}.
-
-    random_state : int, RandomState instance or None, default=None
-        Determines pair sampling, PCA and random initialization. Pass an int
-        for reproducible output across calls. Output does not depend on the
-        number of threads.
-
-    n_jobs : int, default=None
-        Number of parallel jobs for the neighbors search. The compiled
-        kernels use OpenMP and are controlled by ``OMP_NUM_THREADS`` or
-        :mod:`threadpoolctl`.
-
-    verbose : int, default=0
-        Verbosity level.
-
-    Attributes
-    ----------
-    embedding_ : ndarray of shape (n_samples, n_components)
-        The embedding.
-
-    loss_ : float
-        Loss at the start of the last iteration.
-
-    n_iter_ : int
-        Total number of iterations run.
-
-    n_neighbors_, n_mn_, n_fp_ : int
-        Number of NN, MN and FP pairs per point actually used, after
-        adjustment for small ``n_samples``.
-
-    pair_neighbors_, pair_mn_, pair_fp_ : ndarray of shape (n_pairs, 2)
-        Sampled pairs, as rows ``(i, j)``.
-
-    n_features_in_ : int
-        Number of features seen during :term:`fit`.
-
-    feature_names_in_ : ndarray of shape (`n_features_in_`,)
-        Names of features seen during :term:`fit`. Defined only when `X`
-        has feature names that are all strings.
-
-    See Also
-    --------
-    TSNE : T-distributed Stochastic Neighbor Embedding.
-    Isomap : Isomap embedding.
-
-    References
-    ----------
-    .. [1] Wang, Y., Huang, H., Rudin, C., & Shaposhnik, Y. (2021).
-       Understanding How Dimension Reduction Tools Work: An Empirical
-       Approach to Deciphering t-SNE, UMAP, TriMap, and PaCMAP for Data
-       Visualization. Journal of Machine Learning Research, 22(201), 1-73.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from pacmap_sklearn import PaCMAP
-    >>> X = np.random.RandomState(0).rand(100, 5)
-    >>> X_embedded = PaCMAP(random_state=0).fit_transform(X)
-    >>> X_embedded.shape
-    (100, 2)
-    """
-
-    _parameter_constraints: dict = {
-        "n_components": [Interval(Integral, 1, None, closed="left")],
-        "n_neighbors": [Interval(Integral, 1, None, closed="left"), None],
-        "mn_ratio": [Interval(Real, 0, None, closed="left")],
-        "fp_ratio": [Interval(Real, 0, None, closed="neither")],
-        "metric": [StrOptions(set(_METRIC_CODES))],
-        "learning_rate": [Interval(Real, 0, None, closed="neither")],
-        "num_iters": [Interval(Integral, 0, None, closed="left"), tuple],
-        "init": [StrOptions({"pca", "random"}), np.ndarray],
-        "apply_pca": ["boolean"],
-        "random_state": ["random_state"],
-        "n_jobs": [None, Integral],
-        "verbose": ["verbose"],
-    }
-
-    def __init__(
-        self,
-        n_components=2,
-        *,
-        n_neighbors=10,
-        mn_ratio=0.5,
-        fp_ratio=2.0,
-        metric="euclidean",
-        learning_rate=1.0,
-        num_iters=(100, 100, 250),
-        init="pca",
-        apply_pca=True,
-        random_state=None,
-        n_jobs=None,
-        verbose=0,
-    ):
-        self.n_components = n_components
-        self.n_neighbors = n_neighbors
-        self.mn_ratio = mn_ratio
-        self.fp_ratio = fp_ratio
-        self.metric = metric
+    def __init__(self, shape, learning_rate):
+        self.m = np.zeros(shape)
+        self.v = np.zeros(shape)
+        self.step = np.empty(shape)
         self.learning_rate = learning_rate
-        self.num_iters = num_iters
-        self.init = init
-        self.apply_pca = apply_pca
-        self.random_state = random_state
-        self.n_jobs = n_jobs
-        self.verbose = verbose
+
+    def update(self, Y, grad, itr):
+        lr_t = (
+            self.learning_rate
+            * np.sqrt(1.0 - _ADAM_BETA2 ** (itr + 1))
+            / (1.0 - _ADAM_BETA1 ** (itr + 1))
+        )
+        self.m += (1.0 - _ADAM_BETA1) * (grad - self.m)
+        self.v += (1.0 - _ADAM_BETA2) * (grad * grad - self.v)
+        np.sqrt(self.v, out=self.step)
+        self.step += _ADAM_EPS
+        np.divide(self.m, self.step, out=self.step)
+        self.step *= lr_t
+        Y -= self.step
+
+
+_BASE_PARAMETER_CONSTRAINTS = {
+    "n_components": [Interval(Integral, 1, None, closed="left")],
+    "n_neighbors": [Interval(Integral, 1, None, closed="left"), None],
+    "mn_ratio": [Interval(Real, 0, None, closed="left")],
+    "fp_ratio": [Interval(Real, 0, None, closed="neither")],
+    "metric": [StrOptions(set(_METRIC_CODES))],
+    "learning_rate": [Interval(Real, 0, None, closed="neither")],
+    "num_iters": [Interval(Integral, 0, None, closed="left"), tuple],
+    "init": [StrOptions({"pca", "random"}), np.ndarray],
+    "apply_pca": ["boolean"],
+    "n_rashomon": [Interval(Integral, 2, None, closed="left"), None],
+    "rashomon_penalty": [Interval(Real, 0, None, closed="left")],
+    "random_state": ["random_state"],
+    "n_jobs": [None, Integral],
+    "verbose": ["verbose"],
+}
+
+
+class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
+    """Shared machinery of PaCMAP and LocalMAP. Subclasses define
+    ``__init__`` and ``_optimize``."""
+
+    _verbose_name = "PaCMAP"
 
     # ------------------------------------------------------------------ #
     # Validation helpers
@@ -272,15 +180,15 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
 
         if n_fp < 1:
             raise ValueError(
-                f"PaCMAP needs at least one further pair per point; got "
-                f"n_samples={n_samples}, n_neighbors={n_nn}, "
+                f"{type(self).__name__} needs at least one further pair per "
+                f"point; got n_samples={n_samples}, n_neighbors={n_nn}, "
                 f"fp_ratio={self.fp_ratio}. Increase fp_ratio or the number "
                 "of samples."
             )
         return n_nn, n_mn, n_fp
 
     # ------------------------------------------------------------------ #
-    # Fit
+    # Fit stages
     # ------------------------------------------------------------------ #
 
     def _preprocess(self, X, random_state):
@@ -319,8 +227,8 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
             pca_init = np.hstack([pca_init, pad])
         return np.ascontiguousarray(X, dtype=np.float64), pca_init
 
-    def _nearest_neighbor_pairs(self, X, n_nn):
-        """NN pairs: exact kNN, then re-rank by locally scaled distance."""
+    def _knn(self, X, n_nn):
+        """Exact kNN (self excluded), ``n_nn + 50`` neighbors per point."""
         n_samples = X.shape[0]
         n_search = min(n_nn + _N_EXTRA_NEIGHBORS, n_samples - 1)
         sk_metric = {"angular": "cosine"}.get(self.metric, self.metric)
@@ -330,19 +238,30 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
         dist, idx = knn.kneighbors(return_distance=True)
         if self.metric == "angular":
             dist = np.sqrt(2.0 * np.maximum(dist, 0.0))
+        return dist, idx
 
+    @staticmethod
+    def _scaled_neighbors(dist, idx, n_nn):
+        """Re-rank kNN candidates by locally scaled distance (reference)."""
+        n_search = dist.shape[1]
         # sigma_i: mean distance to the 4th-6th neighbors.
         lo, hi = min(3, n_search - 1), min(6, n_search)
         sigma = np.maximum(dist[:, lo:hi].mean(axis=1), 1e-10)
         scaled = dist**2 / sigma[:, None] / sigma[idx]
         order = np.argsort(scaled, axis=1, kind="stable")[:, :n_nn]
-        neighbors = np.ascontiguousarray(
+        return np.ascontiguousarray(
             np.take_along_axis(idx, order, axis=1), dtype=np.intp
         )
-        pairs = np.column_stack(
-            [np.repeat(np.arange(n_samples, dtype=np.intp), n_nn), neighbors.ravel()]
+
+    @staticmethod
+    def _neighbor_pairs(neighbors):
+        n_samples, n_nn = neighbors.shape
+        return np.column_stack(
+            [
+                np.repeat(np.arange(n_samples, dtype=np.intp), n_nn),
+                neighbors.ravel(),
+            ]
         )
-        return pairs, neighbors
 
     def _initial_embedding(self, n_samples, pca_init, random_state):
         if isinstance(self.init, np.ndarray):
@@ -359,39 +278,138 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
             )
         return 1e-2 * pca_init
 
-    def _optimize(self, Y, pairs, pair_types, num_iters, n_threads):
-        n_samples = Y.shape[0]
-        indptr, other, types = _incidence_list(pairs, pair_types, n_samples)
-        grad = np.empty_like(Y)
-        node_loss = np.empty(n_samples)
-        m = np.zeros_like(Y)
-        v = np.zeros_like(Y)
-        step = np.empty_like(Y)
-        n_iter = sum(num_iters)
-        loss = np.nan
-        for itr in range(n_iter):
-            w_nn, w_mn, w_fp = _phase_weights(itr, num_iters[0], num_iters[1])
-            pacmap_gradient(
-                Y, indptr, other, types, w_nn, w_mn, w_fp, grad, node_loss,
-                n_threads,
+    def _run(self, X_search, pca_init, neighbors, n_mn, n_fp, num_iters,
+             random_state, n_threads):
+        """Sample MN / FP pairs, initialize and optimize one embedding."""
+        n_samples = X_search.shape[0]
+        # One seed for all samplers; they use independent salted streams.
+        seed = int(random_state.randint(np.iinfo(np.int32).max))
+        pair_nn = self._neighbor_pairs(neighbors)
+        pair_mn = sample_mn_pairs(
+            X_search, n_samples, n_mn, seed, _METRIC_CODES[self.metric], n_threads
+        )
+        pair_fp = sample_fp_pairs(neighbors, n_fp, seed, n_threads)
+        Y = np.ascontiguousarray(
+            self._initial_embedding(n_samples, pca_init, random_state),
+            dtype=np.float64,
+        )
+        Y, loss, n_iter, pair_fp = self._optimize(
+            Y, pair_nn, pair_mn, pair_fp, neighbors, num_iters, seed, n_threads
+        )
+        return Y, loss, n_iter, pair_nn, pair_mn, pair_fp
+
+    def _rashomon_neighbors(self, X_search, pca_init, dist, idx, n_nn, n_mn,
+                            n_fp, num_iters, random_state, n_threads):
+        """Trustworthy-neighbor refinement (Sun et al., 2026, Algorithm 2).
+
+        Candidates are the ``m = 50`` nearest neighbors in the input space.
+        ``n_rashomon`` embeddings fitted with different seeds serve both as
+        calibration set and as Rashomon set. For candidate pair ``(i, j)``
+        with embedding distances :math:`d^{(t)}_{ij}`:
+
+        .. math::
+
+            \\mu_{ij} = \\tfrac1T\\sum_t d^{(t)}_{ij},\\quad
+            \\sigma_{ij}^2 = \\tfrac1T\\sum_t (d^{(t)}_{ij}-\\mu_{ij})^2,\\quad
+            m_{ij} = \\max_t d^{(t)}_{ij},\\quad
+            M = \\operatorname{mean}_{i,j}\\mu_{ij}
+
+        .. math::
+
+            \\bar\\Psi_{ij} = \\tfrac1T\\sum_t \\Psi^{(t)}_{ij}
+            = \\begin{cases} \\mu_{ij} + \\lambda\\sigma_{ij} & \\mu_{ij} < M \\\\
+                             m_{ij} + \\lambda\\sigma_{ij} & \\text{otherwise}
+              \\end{cases}
+
+        and the ``n_nn`` candidates with the lowest :math:`\\bar\\Psi_{ij}`
+        become the NN partners of ``i``.
+        """
+        n_samples = X_search.shape[0]
+        n_cand = min(max(_N_RASHOMON_CANDIDATES, n_nn), idx.shape[1])
+        candidates = np.ascontiguousarray(idx[:, :n_cand], dtype=np.intp)
+        default_neighbors = self._scaled_neighbors(dist, idx, n_nn)
+
+        s1 = np.zeros((n_samples, n_cand))
+        s2 = np.zeros((n_samples, n_cand))
+        d_max = np.full((n_samples, n_cand), -np.inf)
+        seeds = random_state.randint(np.iinfo(np.int32).max, size=self.n_rashomon)
+        for t, seed in enumerate(seeds):
+            Y_t, *_ = self._run(
+                X_search, pca_init, default_neighbors, n_mn, n_fp, num_iters,
+                np.random.RandomState(seed), n_threads,
             )
-            loss = 0.5 * node_loss.sum()
-            # Adam with the bias correction folded into the step size.
-            lr_t = (
-                self.learning_rate
-                * np.sqrt(1.0 - _ADAM_BETA2 ** (itr + 1))
-                / (1.0 - _ADAM_BETA1 ** (itr + 1))
+            d = np.linalg.norm(Y_t[:, None, :] - Y_t[candidates], axis=2)
+            s1 += d
+            s2 += d * d
+            np.maximum(d_max, d, out=d_max)
+            if self.verbose:
+                print(f"[{self._verbose_name}] Rashomon run {t + 1}/{self.n_rashomon}")
+
+        T = float(self.n_rashomon)
+        mu = s1 / T
+        sigma = np.sqrt(np.maximum(s2 / T - mu * mu, 0.0))
+        threshold = mu.mean()
+        psi = np.where(mu < threshold, mu, d_max) + self.rashomon_penalty * sigma
+
+        order = np.argsort(psi, axis=1, kind="stable")[:, :n_nn]
+        neighbors = np.ascontiguousarray(
+            np.take_along_axis(candidates, order, axis=1), dtype=np.intp
+        )
+        return neighbors, candidates, psi
+
+    def _fit(self, X):
+        precomputed = self.metric == "precomputed"
+        X = validate_data(
+            self, X, dtype=np.float64, ensure_min_samples=3, copy=False
+        )
+        n_samples = X.shape[0]
+        if precomputed:
+            if X.shape[0] != X.shape[1]:
+                raise ValueError(
+                    'With metric="precomputed", X must be a square distance '
+                    f"matrix; got shape {X.shape}."
+                )
+            check_non_negative(
+                X, f"{type(self).__name__}.fit(). With metric='precomputed', X"
             )
-            m += (1.0 - _ADAM_BETA1) * (grad - m)
-            v += (1.0 - _ADAM_BETA2) * (grad * grad - v)
-            np.sqrt(v, out=step)
-            step += _ADAM_EPS
-            np.divide(m, step, out=step)
-            step *= lr_t
-            Y -= step
-            if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
-                print(f"[PaCMAP] Iteration {itr + 1}: loss = {loss:.6f}")
-        return Y, loss, n_iter
+            if isinstance(self.init, str) and self.init == "pca":
+                raise ValueError(
+                    'The parameter init="pca" cannot be used with '
+                    'metric="precomputed".'
+                )
+        num_iters = self._check_num_iters()
+        random_state = check_random_state(self.random_state)
+        n_threads = _openmp_effective_n_threads()
+
+        n_nn, n_mn, n_fp = self._n_pairs(n_samples)
+        if precomputed:
+            X_search, pca_init = np.ascontiguousarray(X), None
+        else:
+            X_search, pca_init = self._preprocess(X, random_state)
+
+        dist, idx = self._knn(X_search, n_nn)
+        if self.n_rashomon is None:
+            neighbors = self._scaled_neighbors(dist, idx, n_nn)
+        else:
+            neighbors, candidates, psi = self._rashomon_neighbors(
+                X_search, pca_init, dist, idx, n_nn, n_mn, n_fp, num_iters,
+                random_state, n_threads,
+            )
+            self.rashomon_candidates_ = candidates
+            self.rashomon_scores_ = psi
+
+        Y, loss, n_iter, pair_nn, pair_mn, pair_fp = self._run(
+            X_search, pca_init, neighbors, n_mn, n_fp, num_iters,
+            random_state, n_threads,
+        )
+        self.embedding_ = Y
+        self.loss_ = float(loss)
+        self.n_iter_ = n_iter
+        self.n_neighbors_, self.n_mn_, self.n_fp_ = n_nn, n_mn, n_fp
+        self.pair_neighbors_ = pair_nn
+        self.pair_mn_ = pair_mn
+        self.pair_fp_ = pair_fp
+        return self.embedding_
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, y=None):
@@ -411,7 +429,7 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
         self : object
             Fitted estimator.
         """
-        self.fit_transform(X)
+        self._fit(X)
         return self
 
     @_fit_context(prefer_skip_nested_validation=True)
@@ -432,63 +450,7 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
         X_new : ndarray of shape (n_samples, n_components)
             Embedding of the training data.
         """
-        precomputed = self.metric == "precomputed"
-        X = validate_data(
-            self, X, dtype=np.float64, ensure_min_samples=3, copy=False
-        )
-        n_samples = X.shape[0]
-        if precomputed:
-            if X.shape[0] != X.shape[1]:
-                raise ValueError(
-                    'With metric="precomputed", X must be a square distance '
-                    f"matrix; got shape {X.shape}."
-                )
-            check_non_negative(X, "PaCMAP.fit(). With metric='precomputed', X")
-            if isinstance(self.init, str) and self.init == "pca":
-                raise ValueError(
-                    'The parameter init="pca" cannot be used with '
-                    'metric="precomputed".'
-                )
-        num_iters = self._check_num_iters()
-        random_state = check_random_state(self.random_state)
-        n_threads = _openmp_effective_n_threads()
-
-        n_nn, n_mn, n_fp = self._n_pairs(n_samples)
-        if precomputed:
-            X_search, pca_init = np.ascontiguousarray(X), None
-        else:
-            X_search, pca_init = self._preprocess(X, random_state)
-
-        # One seed for both samplers; they use independent salted streams.
-        seed = int(random_state.randint(np.iinfo(np.int32).max))
-        pair_nn, neighbors = self._nearest_neighbor_pairs(X_search, n_nn)
-        pair_mn = sample_mn_pairs(
-            X_search, n_samples, n_mn, seed, _METRIC_CODES[self.metric], n_threads
-        )
-        pair_fp = sample_fp_pairs(neighbors, n_fp, seed, n_threads)
-
-        Y = np.ascontiguousarray(
-            self._initial_embedding(n_samples, pca_init, random_state),
-            dtype=np.float64,
-        )
-        pairs = np.concatenate([pair_nn, pair_mn, pair_fp])
-        pair_types = np.concatenate(
-            [
-                np.full(len(pair_nn), _NN, dtype=np.int8),
-                np.full(len(pair_mn), _MN, dtype=np.int8),
-                np.full(len(pair_fp), _FP, dtype=np.int8),
-            ]
-        )
-        Y, loss, n_iter = self._optimize(Y, pairs, pair_types, num_iters, n_threads)
-
-        self.embedding_ = Y
-        self.loss_ = float(loss)
-        self.n_iter_ = n_iter
-        self.n_neighbors_, self.n_mn_, self.n_fp_ = n_nn, n_mn, n_fp
-        self.pair_neighbors_ = pair_nn
-        self.pair_mn_ = pair_mn
-        self.pair_fp_ = pair_fp
-        return self.embedding_
+        return self._fit(X)
 
     @property
     def _n_features_out(self):
@@ -500,3 +462,340 @@ class PaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
         tags.input_tags.pairwise = self.metric == "precomputed"
         tags.input_tags.positive_only = self.metric == "precomputed"
         return tags
+
+
+_SHARED_PARAMS_DOC = """
+    n_components : int, default=2
+        Dimension of the embedded space.
+
+    n_neighbors : int or None, default=10
+        Number of NN pairs per point. If None, uses 10 for ``n_samples <=
+        10000`` and ``round(10 + 15 * (log10(n_samples) - 4))`` otherwise.
+
+    mn_ratio : float, default=0.5
+        Number of MN pairs per point, as a ratio of ``n_neighbors``.
+
+    fp_ratio : float, default=2.0
+        Number of FP pairs per point, as a ratio of ``n_neighbors``.
+
+    metric : {"euclidean", "manhattan", "angular", "hamming", \
+            "precomputed"}, default="euclidean"
+        Metric in the input space. "angular" is
+        :math:`\\sqrt{2 - 2\\cos\\theta}`. If "precomputed", ``X`` is a dense
+        square matrix of pairwise distances.
+
+    learning_rate : float, default=1.0
+        Adam step size.
+
+    num_iters : int or tuple of 3 int, default=(100, 100, 250)
+        Iterations in each of the three phases. An int ``k`` means
+        ``(100, 100, k)``.
+
+    init : {"pca", "random"} or ndarray of shape (n_samples, n_components), \
+            default="pca"
+        Initialization of the embedding. "pca" cannot be used with
+        ``metric="precomputed"``. An array is standardized and scaled by
+        1e-4.
+
+    apply_pca : bool, default=True
+        If True and ``n_features > 100``, center the data and project it onto
+        its top 100 principal components before searching for neighbors.
+        Ignored for ``metric`` in {"hamming", "precomputed"}.
+"""
+
+_RASHOMON_PARAMS_DOC = """
+    n_rashomon : int >= 2 or None, default=None
+        If set, refine the NN pairs with the trustworthy-neighbor procedure
+        of [Sun2026]_ (its Algorithm 2) before the final fit: fit
+        ``n_rashomon`` embeddings with different seeds, score each of the 50
+        nearest input-space candidates of every point by its mean
+        upper-confidence distance :math:`\\bar\\Psi_{ij}`, and keep the
+        ``n_neighbors`` lowest-scoring candidates as NN partners. Costs
+        ``n_rashomon`` extra optimizations; the neighbor search is shared.
+
+    rashomon_penalty : float, default=1.0
+        Penalty :math:`\\lambda` on the across-seed standard deviation in
+        :math:`\\Psi`. Only used if ``n_rashomon`` is set.
+
+    random_state : int, RandomState instance or None, default=None
+        Determines pair sampling, PCA, random initialization and the seeds
+        of the Rashomon runs. Pass an int for reproducible output across
+        calls. Output does not depend on the number of threads.
+
+    n_jobs : int, default=None
+        Number of parallel jobs for the neighbors search. The compiled
+        kernels use OpenMP and are controlled by ``OMP_NUM_THREADS`` or
+        :mod:`threadpoolctl`.
+
+    verbose : int, default=0
+        Verbosity level.
+"""
+
+_ATTRIBUTES_DOC = """
+    Attributes
+    ----------
+    embedding_ : ndarray of shape (n_samples, n_components)
+        The embedding.
+
+    loss_ : float
+        Loss at the start of the last iteration.
+
+    n_iter_ : int
+        Total number of iterations run.
+
+    n_neighbors_, n_mn_, n_fp_ : int
+        Number of NN, MN and FP pairs per point actually used, after
+        adjustment for small ``n_samples``.
+
+    pair_neighbors_, pair_mn_, pair_fp_ : ndarray of shape (n_pairs, 2)
+        Pairs used in the final optimization, as rows ``(i, j)``.
+
+    rashomon_candidates_ : ndarray of shape (n_samples, n_candidates)
+        Candidate NN partners scored by the Rashomon refinement. Only
+        defined if ``n_rashomon`` is set.
+
+    rashomon_scores_ : ndarray of shape (n_samples, n_candidates)
+        :math:`\\bar\\Psi_{ij}` of each candidate; lower is more trustworthy.
+        Only defined if ``n_rashomon`` is set.
+
+    n_features_in_ : int
+        Number of features seen during :term:`fit`.
+
+    feature_names_in_ : ndarray of shape (`n_features_in_`,)
+        Names of features seen during :term:`fit`. Defined only when `X`
+        has feature names that are all strings.
+"""
+
+_REFERENCES_DOC = """
+    .. [Wang2021] Wang, Y., Huang, H., Rudin, C., & Shaposhnik, Y. (2021).
+       Understanding How Dimension Reduction Tools Work: An Empirical
+       Approach to Deciphering t-SNE, UMAP, TriMap, and PaCMAP for Data
+       Visualization. Journal of Machine Learning Research, 22(201), 1-73.
+
+    .. [Sun2026] Sun, Y., Huang, H., Parikh, G. R., & Rudin, C. (2026).
+       The Rashomon Effect for Visualizing High-Dimensional Data. AISTATS.
+"""
+
+
+class PaCMAP(_BasePaCMAP):
+    __doc__ = (
+        """Pairwise Controlled Manifold Approximation Projection.
+
+    PaCMAP embeds data by optimizing a loss over three sets of point pairs:
+    nearest-neighbor (NN) pairs that preserve local structure, mid-near (MN)
+    pairs that preserve global structure, and further (FP) pairs that keep
+    unrelated points apart. Optimization runs in three phases with a fixed
+    weight schedule: MN pairs dominate early to set the global layout, then
+    are switched off so NN and FP pairs refine local structure.
+
+    Read more in the :ref:`User Guide <pacmap>`.
+
+    Parameters
+    ----------"""
+        + _SHARED_PARAMS_DOC
+        + _RASHOMON_PARAMS_DOC
+        + _ATTRIBUTES_DOC
+        + """
+    See Also
+    --------
+    LocalMAP : PaCMAP with local graph adjustment in the last phase.
+    TSNE : T-distributed Stochastic Neighbor Embedding.
+
+    References
+    ----------"""
+        + _REFERENCES_DOC
+        + """
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from pacmap_sklearn import PaCMAP
+    >>> X = np.random.RandomState(0).rand(100, 5)
+    >>> X_embedded = PaCMAP(random_state=0).fit_transform(X)
+    >>> X_embedded.shape
+    (100, 2)
+    """
+    )
+
+    _parameter_constraints: dict = dict(_BASE_PARAMETER_CONSTRAINTS)
+
+    def __init__(
+        self,
+        n_components=2,
+        *,
+        n_neighbors=10,
+        mn_ratio=0.5,
+        fp_ratio=2.0,
+        metric="euclidean",
+        learning_rate=1.0,
+        num_iters=(100, 100, 250),
+        init="pca",
+        apply_pca=True,
+        n_rashomon=None,
+        rashomon_penalty=1.0,
+        random_state=None,
+        n_jobs=None,
+        verbose=0,
+    ):
+        self.n_components = n_components
+        self.n_neighbors = n_neighbors
+        self.mn_ratio = mn_ratio
+        self.fp_ratio = fp_ratio
+        self.metric = metric
+        self.learning_rate = learning_rate
+        self.num_iters = num_iters
+        self.init = init
+        self.apply_pca = apply_pca
+        self.n_rashomon = n_rashomon
+        self.rashomon_penalty = rashomon_penalty
+        self.random_state = random_state
+        self.n_jobs = n_jobs
+        self.verbose = verbose
+
+    def _optimize(self, Y, pair_nn, pair_mn, pair_fp, neighbors, num_iters,
+                  seed, n_threads):
+        n_samples = Y.shape[0]
+        pairs = np.concatenate([pair_nn, pair_mn, pair_fp])
+        types = _pair_types(len(pair_nn), len(pair_mn), len(pair_fp))
+        indptr, other, types = _incidence_list(pairs, types, n_samples)
+        grad = np.empty_like(Y)
+        node_loss = np.empty(n_samples)
+        adam = _Adam(Y.shape, self.learning_rate)
+        n_iter = sum(num_iters)
+        loss = np.nan
+        for itr in range(n_iter):
+            w_nn, w_mn, w_fp = _phase_weights(itr, num_iters[0], num_iters[1])
+            pacmap_gradient(
+                Y, indptr, other, types, w_nn, w_mn, w_fp, grad, node_loss,
+                n_threads,
+            )
+            loss = 0.5 * node_loss.sum()
+            adam.update(Y, grad, itr)
+            if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
+                print(f"[PaCMAP] Iteration {itr + 1}: loss = {loss:.6f}")
+        return Y, loss, n_iter, pair_fp
+
+
+class LocalMAP(_BasePaCMAP):
+    __doc__ = (
+        """LocalMAP: PaCMAP with local graph adjustment.
+
+    Runs PaCMAP's first two phases unchanged. In the third phase it
+    (a) multiplies the NN gradient coefficient by
+    :math:`(\\text{low\\_dist\\_thres}/2)/\\sqrt{\\tilde d_{ij}}`, pulling
+    close neighbors harder, and (b) every 10 iterations resamples the FP
+    pairs among points within ``low_dist_thres`` of each point in the
+    current embedding, so repulsion acts between nearby clusters.
+
+    Phase-3 behavior starts at iteration ``n1 + n2 + 1`` and resampling at
+    the first multiple of 10 after ``n1 + n2``, matching the reference
+    implementation.
+
+    Parameters
+    ----------"""
+        + _SHARED_PARAMS_DOC
+        + """
+    low_dist_thres : float, default=10.0
+        Embedding-space radius within which FP pairs are resampled in
+        phase 3; also sets the NN gradient multiplier.
+"""
+        + _RASHOMON_PARAMS_DOC
+        + _ATTRIBUTES_DOC
+        + """
+    See Also
+    --------
+    PaCMAP : Pairwise Controlled Manifold Approximation Projection.
+
+    References
+    ----------"""
+        + _REFERENCES_DOC
+        + """
+    .. [Wang2025] Wang, Y., Sun, Y., Huang, H., & Rudin, C. (2025).
+       Dimension Reduction with Locally Adjusted Graphs. AAAI, 39(20).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from pacmap_sklearn import LocalMAP
+    >>> X = np.random.RandomState(0).rand(100, 5)
+    >>> X_embedded = LocalMAP(random_state=0).fit_transform(X)
+    >>> X_embedded.shape
+    (100, 2)
+    """
+    )
+
+    _verbose_name = "LocalMAP"
+    _parameter_constraints: dict = {
+        **_BASE_PARAMETER_CONSTRAINTS,
+        "low_dist_thres": [Interval(Real, 0, None, closed="neither")],
+    }
+
+    def __init__(
+        self,
+        n_components=2,
+        *,
+        n_neighbors=10,
+        mn_ratio=0.5,
+        fp_ratio=2.0,
+        metric="euclidean",
+        learning_rate=1.0,
+        num_iters=(100, 100, 250),
+        init="pca",
+        apply_pca=True,
+        low_dist_thres=10.0,
+        n_rashomon=None,
+        rashomon_penalty=1.0,
+        random_state=None,
+        n_jobs=None,
+        verbose=0,
+    ):
+        self.n_components = n_components
+        self.n_neighbors = n_neighbors
+        self.mn_ratio = mn_ratio
+        self.fp_ratio = fp_ratio
+        self.metric = metric
+        self.learning_rate = learning_rate
+        self.num_iters = num_iters
+        self.init = init
+        self.apply_pca = apply_pca
+        self.low_dist_thres = low_dist_thres
+        self.n_rashomon = n_rashomon
+        self.rashomon_penalty = rashomon_penalty
+        self.random_state = random_state
+        self.n_jobs = n_jobs
+        self.verbose = verbose
+
+    def _optimize(self, Y, pair_nn, pair_mn, pair_fp, neighbors, num_iters,
+                  seed, n_threads):
+        n_samples = Y.shape[0]
+        types = _pair_types(len(pair_nn), len(pair_mn), len(pair_fp))
+        indptr, other, inc_types = _incidence_list(
+            np.concatenate([pair_nn, pair_mn, pair_fp]), types, n_samples
+        )
+        grad = np.empty_like(Y)
+        node_loss = np.empty(n_samples)
+        adam = _Adam(Y.shape, self.learning_rate)
+        n_iter = sum(num_iters)
+        phase3_after = num_iters[0] + num_iters[1]
+        nn_recip_coef = self.low_dist_thres / 2.0
+        loss = np.nan
+        for itr in range(n_iter):
+            w_nn, w_mn, w_fp = _phase_weights(itr, num_iters[0], num_iters[1])
+            # Strict inequality as in the reference implementation.
+            in_phase3 = itr > phase3_after
+            pacmap_gradient(
+                Y, indptr, other, inc_types, w_nn, w_mn, w_fp, grad, node_loss,
+                n_threads, nn_recip_coef if in_phase3 else 0.0,
+            )
+            loss = 0.5 * node_loss.sum()
+            adam.update(Y, grad, itr)
+            if in_phase3 and itr % _LOCALMAP_RESAMPLE_EVERY == 0:
+                pair_fp = resample_fp_nearby(
+                    Y, neighbors, pair_fp, self.low_dist_thres, seed, itr,
+                    n_threads,
+                )
+                indptr, other, inc_types = _incidence_list(
+                    np.concatenate([pair_nn, pair_mn, pair_fp]), types, n_samples
+                )
+            if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
+                print(f"[LocalMAP] Iteration {itr + 1}: loss = {loss:.6f}")
+        return Y, loss, n_iter, pair_fp

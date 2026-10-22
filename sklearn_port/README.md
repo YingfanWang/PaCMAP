@@ -1,9 +1,21 @@
 # PaCMAP → scikit-learn port
 
-Staging area for a `sklearn.manifold.PaCMAP` proposal. The estimator here
-depends only on numpy, scipy and scikit-learn at runtime, implements its
-kernels in Cython + OpenMP, and passes `sklearn.utils.estimator_checks`
-for the euclidean, angular, manhattan and precomputed configurations.
+Staging area for a `sklearn.manifold.PaCMAP` proposal. The package contains
+two estimators, `PaCMAP` and `LocalMAP`.
+
+* They depend only on numpy, scipy and scikit-learn at runtime.
+* Their kernels are written in Cython + OpenMP.
+* Both pass `sklearn.utils.estimator_checks` (euclidean, angular,
+  manhattan, precomputed, and with Rashomon refinement on).
+
+Both also take an optional Rashomon trustworthy-neighbor refinement
+(`n_rashomon`, see below).
+
+**Scope for upstream.** Only `PaCMAP` without `n_rashomon` is meant for the
+scikit-learn PR. LocalMAP (AAAI 2025) and the Rashomon refinement
+(AISTATS 2026) are too recent for the
+[inclusion criteria](https://scikit-learn.org/stable/faq.html#what-are-the-inclusion-criteria-for-new-algorithms).
+They live here so the contrib package gets them with the same kernels.
 
 Files are laid out as they would be inside scikit-learn:
 
@@ -12,6 +24,7 @@ Files are laid out as they would be inside scikit-learn:
 | `pacmap_sklearn/_pacmap.py` | `sklearn/manifold/_pacmap.py` |
 | `pacmap_sklearn/_pacmap_utils.pyx` | `sklearn/manifold/_pacmap_utils.pyx` |
 | `pacmap_sklearn/tests/test_pacmap.py` | `sklearn/manifold/tests/test_pacmap.py` |
+| `pacmap_sklearn/tests/test_localmap_rashomon.py` | contrib only |
 | `meson.build.sklearn` | stanza for `sklearn/manifold/meson.build` |
 | `benchmarks/bench_pacmap.py` | `benchmarks/bench_pacmap.py` |
 
@@ -69,7 +82,7 @@ cd .. && PYTHONPATH=sklearn_port python sklearn_port/benchmarks/bench_pacmap.py
 | `n_neighbors` overwritten in `fit` | stored as `n_neighbors_` | params must not change during fit |
 | `random_state` in module global `_RANDOM_STATE` | per-instance, `check_random_state` | see bug below |
 | float32 | float64 | sklearn default; float32 input is upcast |
-| `transform`, `intermediate`, `save`/`load`, `pair_*` inputs, `knn_backend`, `save_tree`, `LocalMAP` | dropped | not needed for a first upstream PR (`TSNE` has no `transform` either) |
+| `transform`, `intermediate`, `save`/`load`, `pair_*` inputs, `knn_backend`, `save_tree` | dropped | not needed for a first upstream PR (`TSNE` has no `transform` either) |
 
 **Bug found in the reference implementation.** `random_state` is stored in a
 module-level global, and every `PaCMAP.__init__` overwrites it.
@@ -98,6 +111,93 @@ module-level global, and every `PaCMAP.__init__` overwrites it.
 
 Sampled pairs are not bitwise equal to the reference's, because the RNG is
 different. They follow the same distribution.
+
+## LocalMAP
+
+`LocalMAP` reproduces the reference algorithm, including its iteration
+indexing. Phase 3 has two changes relative to PaCMAP.
+
+1. **NN gradient.** The NN gradient coefficient is multiplied by
+   $(\text{low\_dist\_thres}/2)/\sqrt{\tilde d_{ij}}$. This is an extra
+   argument to the same gradient kernel; the reported loss is unchanged, as
+   in the reference.
+2. **FP resampling.** Every 10 iterations, FP pairs are resampled among
+   points within `low_dist_thres` of each point in the current embedding.
+   `resample_fp_nearby` mirrors the reference sampler's control flow
+   exactly:
+   * the per-slot draw counter is checked only after a duplicate or NN
+     rejection, or after an acceptance;
+   * after more than 100 draws, the slot keeps its old partner.
+
+   After each resample, the incidence list is rebuilt with an O(n + P)
+   counting sort (`build_incidence`), which now also serves `PaCMAP`.
+
+**Iteration indexing kept as in the reference.**
+
+* Phase 3 begins at `n1 + n2`, but both changes start only at
+  `itr > n1 + n2`, so the first phase-3 step is a plain PaCMAP step.
+* Resampling happens when `itr % 10 == 0`.
+* `test_localmap_equals_pacmap_before_phase3` pins this behaviour.
+
+**Unbounded rejection loop in the reference sampler.** A too-far rejection
+never reaches the counter check. For an isolated point (no other point
+within `low_dist_thres`), a slot therefore runs until it happens to draw an
+NN partner or a duplicate. That takes about n / n_NN draws instead of 100.
+The port reproduces this. A bounded version would change the algorithm,
+so that is your call.
+
+**Parity.**
+
+* The gradient matches `pacmap_grad_nearby_recip_sqrt` to float32
+  precision.
+* Resampling statistics match `sample_FP_pair_nearby`: the fraction of
+  slots that keep their old partner, the median new-pair distance, and the
+  duplicate rate.
+* Embedding quality matches the reference LocalMAP (`test_parity.py`).
+
+## Rashomon trustworthy-neighbor refinement (`n_rashomon`)
+
+This is Algorithm 2 (mean score) of Sun, Huang, Parikh & Rudin, *The
+Rashomon Effect for Visualizing High-Dimensional Data* (AISTATS 2026). It is
+available on both estimators and is off by default.
+
+1. **Candidates.** Take the $m = 50$ nearest input-space neighbors of each
+   point (the raw distance order, from the same exact search).
+2. **Rashomon runs.** Fit `n_rashomon` embeddings with independent seeds
+   drawn from `random_state`, using the default NN pairs. The
+   preprocessing and neighbor search are shared. Each run uses the same
+   estimator class, so LocalMAP is refined with LocalMAP runs.
+3. **Statistics.** For each candidate pair, over the runs compute:
+   * the mean $\mu_{ij}$;
+   * the population standard deviation $\sigma_{ij}$;
+   * the max $m_{ij}$ of $\|y_i - y_j\|_2$;
+   * the threshold $M = \operatorname{mean}_{i,j}\mu_{ij}$.
+4. **Score.**
+   $$\bar\Psi_{ij} = \begin{cases}\mu_{ij} + \lambda\sigma_{ij} & \mu_{ij} < M\\ m_{ij} + \lambda\sigma_{ij} & \text{otherwise}\end{cases}$$
+   The `n_neighbors` candidates with the lowest $\bar\Psi_{ij}$ become the
+   NN partners of $i$.
+5. **Final fit.** Refit with the refined NN pairs. MN pairs are sampled
+   afresh, and FP pairs are sampled afresh excluding the refined NN
+   partners. The candidates and scores are exposed as
+   `rashomon_candidates_` and `rashomon_scores_`.
+
+**Where the paper is unspecific and the port had to choose.** Please
+confirm or correct each of these.
+
+| point | choice made | alternative |
+|---|---|---|
+| calibration set vs Rashomon set | the same `n_rashomon` runs serve as both | separate runs (paper: "separate calibration set") |
+| μ and threshold | mean μ and M = mean μ (Appendix B) | median μ\*, and comparing $d^y_{ij}$ to M\* (Section 5, Eq. 5) |
+| embedding standardization | none (pseudocode uses raw distances) | standardize each run to zero mean, unit mean squared norm (Sec. 3) |
+| λ (`rashomon_penalty`) | 1.0 | not given in the paper |
+| MN / FP pairs in the refit | resampled | not stated |
+| m | 50, as in the experiments | — |
+
+If the calibration and scoring runs were separate,
+$\bar\Psi$ would average $d^{(t)}_{ij}$ over the scoring runs rather than
+reusing μ. With a shared set the two coincide.
+
+Results on USPS / 20NG: pending (see `benchmarks/`).
 
 ## Results
 
