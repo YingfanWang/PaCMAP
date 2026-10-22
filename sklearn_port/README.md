@@ -197,7 +197,37 @@ If the calibration and scoring runs were separate,
 $\bar\Psi$ would average $d^{(t)}_{ij}$ over the scoring runs rather than
 reusing μ. With a shared set the two coincide.
 
-Results on USPS / 20NG: pending (see `benchmarks/`).
+**Results.** Mean over 2 seeds, `n_rashomon=5`, λ = 1.
+
+Metrics:
+
+* **purity**: fraction of NN pairs whose endpoints share a label.
+* **trust**: trustworthiness@10 on a 3000-point subsample.
+* **10-NN**: 5-fold kNN accuracy in the embedding.
+
+| dataset | method | n_rashomon | purity | trust | 10-NN |
+|---|---|---|---|---|---|
+| USPS | PaCMAP | – | 0.9335 | 0.9526 | 0.9587 |
+| | PaCMAP | 5 | **0.9583** | **0.9596** | **0.9662** |
+| | LocalMAP | – | 0.9335 | 0.9657 | 0.9672 |
+| | LocalMAP | 5 | **0.9578** | **0.9673** | 0.9661 |
+| 20NG | PaCMAP | – | 0.5903 | 0.8610 | 0.5334 |
+| | PaCMAP | 5 | 0.5625 | **0.8771** | **0.5556** |
+| | LocalMAP | – | 0.5903 | 0.8957 | 0.5687 |
+| | LocalMAP | 5 | 0.5610 | 0.8895 | **0.5835** |
+
+Cost is about (n_rashomon + 1)× a plain fit. The kNN search is shared;
+everything else is repeated.
+
+What the numbers show:
+
+* **USPS.** Refinement raises NN-graph purity by about 2.5 points. It also
+  improves PaCMAP's trust and 10-NN accuracy.
+* **20NG.** Refinement *lowers* purity by about 3 points, yet 10-NN
+  accuracy still rises by about 2 points for both estimators.
+* **Likely cause on 20NG.** Here the 50 input-space candidates of a point
+  are mostly cross-topic. Choosing the most stable of them is not the same
+  as choosing same-label ones.
 
 ## Results
 
