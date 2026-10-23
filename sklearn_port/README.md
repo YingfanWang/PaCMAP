@@ -6,10 +6,10 @@ two estimators, `PaCMAP` and `LocalMAP`.
 * They depend only on numpy, scipy and scikit-learn at runtime.
 * Their kernels are written in Cython + OpenMP.
 * Both pass `sklearn.utils.estimator_checks` (euclidean, angular,
-  manhattan, precomputed, and with Rashomon refinement on).
+  manhattan, precomputed, and PaCMAP with Rashomon refinement on).
 
-Both also take an optional Rashomon trustworthy-neighbor refinement
-(`n_rashomon`, see below).
+`PaCMAP` also takes an optional Rashomon trustworthy-neighbor refinement
+(`n_rashomon`, see below). `LocalMAP` deliberately does not.
 
 **Scope for upstream.** Only `PaCMAP` without `n_rashomon` is meant for the
 scikit-learn PR. LocalMAP (AAAI 2025) and the Rashomon refinement
@@ -159,14 +159,13 @@ so that is your call.
 
 This is Algorithm 2 (mean score) of Sun, Huang, Parikh & Rudin, *The
 Rashomon Effect for Visualizing High-Dimensional Data* (AISTATS 2026). It is
-available on both estimators and is off by default.
+available on `PaCMAP` only and is off by default.
 
 1. **Candidates.** Take the $m = 50$ nearest input-space neighbors of each
    point (the raw distance order, from the same exact search).
 2. **Rashomon runs.** Fit `n_rashomon` embeddings with independent seeds
    drawn from `random_state`, using the default NN pairs. The
-   preprocessing and neighbor search are shared. Each run uses the same
-   estimator class, so LocalMAP is refined with LocalMAP runs.
+   preprocessing and neighbor search are shared.
 3. **Statistics.** For each candidate pair, over the runs compute:
    * the mean $\mu_{ij}$;
    * the population standard deviation $\sigma_{ij}$;
@@ -228,6 +227,21 @@ What the numbers show:
 * **Likely cause on 20NG.** Here the 50 input-space candidates of a point
   are mostly cross-topic. Choosing the most stable of them is not the same
   as choosing same-label ones.
+
+**Not supported on LocalMAP.** The LocalMAP rows above come from an earlier
+version of the branch. Although its metrics hold up, the LocalMAP +
+refinement embedding fragments every USPS digit into filaments and rings
+(`benchmarks/plot_variants.py`).
+
+* The refined graph stays connected.
+* Its reciprocity (j is i's neighbor and i is j's) drops from 0.81 to 0.54.
+* LocalMAP's phase-3 local repulsion then tears clusters apart. PaCMAP has
+  no local repulsion and does not fragment.
+
+`LocalMAP` therefore has no `n_rashomon` / `rashomon_penalty` parameters at
+all. Constructing it with them raises `TypeError`, and `set_params` raises
+`ValueError`. A comment in the code and
+`test_localmap_has_no_rashomon_parameters` keep it that way.
 
 ## Results
 

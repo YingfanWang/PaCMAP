@@ -118,10 +118,9 @@ def test_localmap_digits_quality():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("Est", [PaCMAP, LocalMAP])
-def test_rashomon_selection(Est):
+def test_rashomon_selection():
     X, _ = make_blobs(400, n_features=15, centers=5, random_state=0)
-    est = Est(n_rashomon=3, random_state=0, **FAST).fit(X)
+    est = PaCMAP(n_rashomon=3, random_state=0, **FAST).fit(X)
     n, k = X.shape[0], est.n_neighbors_
     cand, psi = est.rashomon_candidates_, est.rashomon_scores_
     assert cand.shape == psi.shape == (n, 50)
@@ -171,3 +170,16 @@ def test_rashomon_purity_on_digits():
 def test_rashomon_invalid(n_rashomon):
     with pytest.raises(ValueError, match="n_rashomon"):
         PaCMAP(n_rashomon=n_rashomon).fit(np.random.rand(30, 3))
+
+
+def test_localmap_has_no_rashomon_parameters():
+    # Rashomon refinement fragments LocalMAP embeddings, so LocalMAP does not
+    # expose it at all (not settable via __init__, set_params or a search).
+    params = LocalMAP().get_params()
+    assert "n_rashomon" not in params and "rashomon_penalty" not in params
+    with pytest.raises(TypeError):
+        LocalMAP(n_rashomon=5)
+    with pytest.raises(ValueError, match="Invalid parameter"):
+        LocalMAP().set_params(n_rashomon=5)
+    X, _ = make_blobs(200, n_features=10, random_state=0)
+    assert not hasattr(LocalMAP(random_state=0, **FAST).fit(X), "rashomon_scores_")

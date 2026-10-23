@@ -16,7 +16,6 @@ FAST = dict(num_iters=(10, 10, 20))
         PaCMAP(n_rashomon=2, **FAST),
         LocalMAP(**FAST),
         LocalMAP(metric="precomputed", init="random", **FAST),
-        LocalMAP(n_rashomon=2, **FAST),
     ]
 )
 def test_sklearn_compatible_estimator(estimator, check):

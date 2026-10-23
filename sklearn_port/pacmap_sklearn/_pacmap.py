@@ -123,8 +123,6 @@ _BASE_PARAMETER_CONSTRAINTS = {
     "num_iters": [Interval(Integral, 0, None, closed="left"), tuple],
     "init": [StrOptions({"pca", "random"}), np.ndarray],
     "apply_pca": ["boolean"],
-    "n_rashomon": [Interval(Integral, 2, None, closed="left"), None],
-    "rashomon_penalty": [Interval(Real, 0, None, closed="left")],
     "random_state": ["random_state"],
     "n_jobs": [None, Integral],
     "verbose": ["verbose"],
@@ -388,7 +386,10 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
             X_search, pca_init = self._preprocess(X, random_state)
 
         dist, idx = self._knn(X_search, n_nn)
-        if self.n_rashomon is None:
+        # Only PaCMAP defines ``n_rashomon``. LocalMAP intentionally does not
+        # support Rashomon refinement (see the note on LocalMAP), so for it
+        # this attribute is absent and the default NN graph is always used.
+        if getattr(self, "n_rashomon", None) is None:
             neighbors = self._scaled_neighbors(dist, idx, n_nn)
         else:
             neighbors, candidates, psi = self._rashomon_neighbors(
@@ -516,11 +517,14 @@ _RASHOMON_PARAMS_DOC = """
     rashomon_penalty : float, default=1.0
         Penalty :math:`\\lambda` on the across-seed standard deviation in
         :math:`\\Psi`. Only used if ``n_rashomon`` is set.
+"""
 
+_COMMON_TAIL_DOC = """
     random_state : int, RandomState instance or None, default=None
-        Determines pair sampling, PCA, random initialization and the seeds
-        of the Rashomon runs. Pass an int for reproducible output across
-        calls. Output does not depend on the number of threads.
+        Determines pair sampling, PCA and random initialization (and, for
+        PaCMAP, the seeds of the Rashomon runs). Pass an int for
+        reproducible output across calls. Output does not depend on the
+        number of threads.
 
     n_jobs : int, default=None
         Number of parallel jobs for the neighbors search. The compiled
@@ -549,7 +553,9 @@ _ATTRIBUTES_DOC = """
 
     pair_neighbors_, pair_mn_, pair_fp_ : ndarray of shape (n_pairs, 2)
         Pairs used in the final optimization, as rows ``(i, j)``.
+"""
 
+_RASHOMON_ATTRIBUTES_DOC = """
     rashomon_candidates_ : ndarray of shape (n_samples, n_candidates)
         Candidate NN partners scored by the Rashomon refinement. Only
         defined if ``n_rashomon`` is set.
@@ -557,7 +563,9 @@ _ATTRIBUTES_DOC = """
     rashomon_scores_ : ndarray of shape (n_samples, n_candidates)
         :math:`\\bar\\Psi_{ij}` of each candidate; lower is more trustworthy.
         Only defined if ``n_rashomon`` is set.
+"""
 
+_INPUT_ATTRIBUTES_DOC = """
     n_features_in_ : int
         Number of features seen during :term:`fit`.
 
@@ -594,7 +602,10 @@ class PaCMAP(_BasePaCMAP):
     ----------"""
         + _SHARED_PARAMS_DOC
         + _RASHOMON_PARAMS_DOC
+        + _COMMON_TAIL_DOC
         + _ATTRIBUTES_DOC
+        + _RASHOMON_ATTRIBUTES_DOC
+        + _INPUT_ATTRIBUTES_DOC
         + """
     See Also
     --------
@@ -616,7 +627,11 @@ class PaCMAP(_BasePaCMAP):
     """
     )
 
-    _parameter_constraints: dict = dict(_BASE_PARAMETER_CONSTRAINTS)
+    _parameter_constraints: dict = {
+        **_BASE_PARAMETER_CONSTRAINTS,
+        "n_rashomon": [Interval(Integral, 2, None, closed="left"), None],
+        "rashomon_penalty": [Interval(Real, 0, None, closed="left")],
+    }
 
     def __init__(
         self,
@@ -697,9 +712,14 @@ class LocalMAP(_BasePaCMAP):
     low_dist_thres : float, default=10.0
         Embedding-space radius within which FP pairs are resampled in
         phase 3; also sets the NN gradient multiplier.
+
+    Rashomon neighbor refinement (``n_rashomon``) is deliberately not
+    available: combined with LocalMAP's phase-3 local repulsion, the refined
+    neighbor graph fragments clusters into disconnected filaments.
 """
-        + _RASHOMON_PARAMS_DOC
+        + _COMMON_TAIL_DOC
         + _ATTRIBUTES_DOC
+        + _INPUT_ATTRIBUTES_DOC
         + """
     See Also
     --------
@@ -724,6 +744,17 @@ class LocalMAP(_BasePaCMAP):
     )
 
     _verbose_name = "LocalMAP"
+
+    # NOTE: LocalMAP must NOT support Rashomon neighbor refinement
+    # (``n_rashomon`` / ``rashomon_penalty``). Do not add these parameters
+    # here or to ``__init__``. The refined NN graph favours pairs that are
+    # already stably close across seeds, which lowers reciprocity of the NN
+    # graph (0.81 -> 0.54 on USPS); LocalMAP's phase-3 local FP repulsion and
+    # sharpened NN attraction then tear every cluster into filaments and
+    # rings (see benchmarks/plot_variants.py). The parameters are omitted
+    # entirely, rather than validated and rejected, so they cannot be set via
+    # set_params or a hyperparameter search either.
+    # Pinned by test_localmap_has_no_rashomon_parameters.
     _parameter_constraints: dict = {
         **_BASE_PARAMETER_CONSTRAINTS,
         "low_dist_thres": [Interval(Real, 0, None, closed="neither")],
@@ -742,8 +773,6 @@ class LocalMAP(_BasePaCMAP):
         init="pca",
         apply_pca=True,
         low_dist_thres=10.0,
-        n_rashomon=None,
-        rashomon_penalty=1.0,
         random_state=None,
         n_jobs=None,
         verbose=0,
@@ -758,8 +787,6 @@ class LocalMAP(_BasePaCMAP):
         self.init = init
         self.apply_pca = apply_pca
         self.low_dist_thres = low_dist_thres
-        self.n_rashomon = n_rashomon
-        self.rashomon_penalty = rashomon_penalty
         self.random_state = random_state
         self.n_jobs = n_jobs
         self.verbose = verbose
