@@ -14,7 +14,11 @@ from sklearn import config_context
 from sklearn.datasets import make_blobs
 from threadpoolctl import threadpool_limits
 
-from pacmap_sklearn import LocalMAP, PaCMAP
+from functools import partial
+
+from pacmap_sklearn import PaCMAP
+
+LocalMAP = partial(PaCMAP, localmap=True)  # LocalMAP is a switch on PaCMAP
 from pacmap_sklearn._pacmap_utils import resample_fp_nearby, sample_fp_pairs
 
 FAST = dict(num_iters=(20, 20, 20), random_state=0)
@@ -107,7 +111,7 @@ def test_pandas_transform_output(Est, n_features):
     with config_context(transform_output="pandas"):
         Y = Est(**FAST).fit_transform(X)
     assert isinstance(Y, pd.DataFrame)
-    assert list(Y.columns) == [f"{Est.__name__.lower()}0", f"{Est.__name__.lower()}1"]
+    assert list(Y.columns) == ["pacmap0", "pacmap1"]
     assert_array_equal(Y.to_numpy(), expected)
 
 

@@ -9,7 +9,11 @@ from sklearn.datasets import load_digits, make_blobs
 from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsTransformer
 
-from pacmap_sklearn import LocalMAP, PaCMAP
+from functools import partial
+
+from pacmap_sklearn import PaCMAP
+
+LocalMAP = partial(PaCMAP, localmap=True)  # LocalMAP is a switch on PaCMAP
 
 FAST = dict(num_iters=(30, 30, 60))
 

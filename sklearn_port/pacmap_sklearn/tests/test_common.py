@@ -3,7 +3,11 @@
 from sklearn.neighbors import KNeighborsTransformer
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
-from pacmap_sklearn import LocalMAP, PaCMAP
+from functools import partial
+
+from pacmap_sklearn import PaCMAP
+
+LocalMAP = partial(PaCMAP, localmap=True)  # LocalMAP is a switch on PaCMAP
 
 FAST = dict(num_iters=(10, 10, 20))
 

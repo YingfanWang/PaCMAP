@@ -15,7 +15,15 @@ import numpy as np
 from bench_pacmap import load, scores
 from plot_embeddings import INK, INK2, SURFACE, draw
 
-from pacmap_sklearn import LocalMAP, PaCMAP
+from pacmap_sklearn import PaCMAP
+
+
+class _LocalMAPWithRashomon(PaCMAP):
+    """Reproduces the evidence for banning localmap + n_rashomon; the public
+    estimator raises on this combination. Do not use for real embeddings."""
+
+    def _check_switches(self):
+        pass
 
 
 def purity(est, y):
@@ -28,9 +36,10 @@ def main(out, n_rashomon=5):
         ("PaCMAP", lambda: PaCMAP(random_state=0)),
         (f"PaCMAP · n_rashomon={n_rashomon}",
          lambda: PaCMAP(n_rashomon=n_rashomon, random_state=0)),
-        ("LocalMAP", lambda: LocalMAP(random_state=0)),
+        ("LocalMAP", lambda: PaCMAP(localmap=True, random_state=0)),
         (f"LocalMAP · n_rashomon={n_rashomon}",
-         lambda: LocalMAP(n_rashomon=n_rashomon, random_state=0)),
+         lambda: _LocalMAPWithRashomon(localmap=True, n_rashomon=n_rashomon,
+                                       random_state=0)),
     ]
     datasets = [("USPS", *load("USPS")), ("20NG", *load("20NG"))]
     fig, axes = plt.subplots(2, 4, figsize=(18, 9.6), facecolor=SURFACE)

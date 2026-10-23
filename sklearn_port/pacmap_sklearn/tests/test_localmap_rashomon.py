@@ -6,7 +6,11 @@ from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 from threadpoolctl import threadpool_limits
 
-from pacmap_sklearn import LocalMAP, PaCMAP
+from functools import partial
+
+from pacmap_sklearn import PaCMAP
+
+LocalMAP = partial(PaCMAP, localmap=True)  # LocalMAP is a switch on PaCMAP
 from pacmap_sklearn._pacmap_utils import (
     build_incidence,
     resample_fp_nearby,
@@ -172,14 +176,26 @@ def test_rashomon_invalid(n_rashomon):
         PaCMAP(n_rashomon=n_rashomon).fit(np.random.rand(30, 3))
 
 
-def test_localmap_has_no_rashomon_parameters():
-    # Rashomon refinement fragments LocalMAP embeddings, so LocalMAP does not
-    # expose it at all (not settable via __init__, set_params or a search).
-    params = LocalMAP().get_params()
-    assert "n_rashomon" not in params and "rashomon_penalty" not in params
-    with pytest.raises(TypeError):
-        LocalMAP(n_rashomon=5)
-    with pytest.raises(ValueError, match="Invalid parameter"):
-        LocalMAP().set_params(n_rashomon=5)
+def test_localmap_rejects_rashomon():
+    # Rashomon refinement fragments LocalMAP embeddings, so the two switches
+    # cannot be combined (see the NOTE in PaCMAP._check_switches).
     X, _ = make_blobs(200, n_features=10, random_state=0)
+    with pytest.raises(ValueError, match="cannot be combined with n_rashomon"):
+        PaCMAP(localmap=True, n_rashomon=3, **FAST).fit(X)
+    with pytest.raises(ValueError, match="cannot be combined with n_rashomon"):
+        PaCMAP(**FAST).set_params(localmap=True, n_rashomon=3).fit(X)
     assert not hasattr(LocalMAP(random_state=0, **FAST).fit(X), "rashomon_scores_")
+
+
+def test_localmap_switch_off_is_plain_pacmap():
+    X, _ = make_blobs(200, n_features=10, random_state=0)
+    a = PaCMAP(random_state=0, **FAST).fit_transform(X)
+    b = PaCMAP(localmap=False, low_dist_thres=0.123, random_state=0, **FAST).fit_transform(X)
+    assert_array_equal(a, b)  # low_dist_thres ignored when the switch is off
+
+
+def test_public_api_is_pacmap_only():
+    import pacmap_sklearn
+
+    assert pacmap_sklearn.__all__ == ["PaCMAP"]
+    assert not hasattr(pacmap_sklearn, "LocalMAP")

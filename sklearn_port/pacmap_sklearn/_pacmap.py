@@ -169,10 +169,8 @@ def _finalize(Y, indptr, other, types, num_iters, n_threads, grad, node_loss,
 
 
 class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
-    """Shared machinery of PaCMAP and LocalMAP. Subclasses define
-    ``__init__`` and ``_optimize``."""
-
-    _verbose_name = "PaCMAP"
+    """Fit machinery; the public estimator defines ``__init__`` and
+    ``_optimize``."""
 
     # ------------------------------------------------------------------ #
     # Validation helpers
@@ -545,10 +543,7 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
             X_search, pca_init = self._preprocess(X, random_state)
 
         dist, idx = self._knn(X_search, n_nn)
-        # Only PaCMAP defines ``n_rashomon``. LocalMAP intentionally does not
-        # support Rashomon refinement (see the note on LocalMAP), so for it
-        # this attribute is absent and the default NN graph is always used.
-        if getattr(self, "n_rashomon", None) is None:
+        if self.n_rashomon is None:
             neighbors = self._scaled_neighbors(dist, idx, n_nn)
         else:
             # The paper (Sun et al., 2026) leaves several choices open; the
@@ -708,8 +703,8 @@ _RASHOMON_PARAMS_DOC = """
 
 _COMMON_TAIL_DOC = """
     random_state : int, RandomState instance or None, default=None
-        Determines pair sampling, PCA and random initialization (and, for
-        PaCMAP, the seeds of the Rashomon runs). Pass an int for
+        Determines pair sampling, PCA, random initialization, LocalMAP
+        resampling and the seeds of the Rashomon runs. Pass an int for
         reproducible output across calls. Output does not depend on the
         number of threads.
 
@@ -777,6 +772,26 @@ _REFERENCES_DOC = """
 """
 
 
+_LOCALMAP_PARAMS_DOC = """
+    localmap : bool, default=False
+        Switch on LocalMAP [Wang2025]_: PaCMAP with local graph adjustment.
+        The first two phases are unchanged. In the third phase it
+        (a) multiplies the NN gradient coefficient by
+        :math:`(\\text{low\\_dist\\_thres}/2)/\\sqrt{\\tilde d_{ij}}`,
+        pulling close neighbors harder, and (b) every 10 iterations resamples
+        the FP pairs among points within ``low_dist_thres`` of each point in
+        the current embedding, so repulsion acts between nearby clusters.
+        Phase-3 behavior starts at iteration ``n1 + n2 + 1`` and resampling
+        at the first multiple of 10 after ``n1 + n2``, as in the reference
+        implementation. Cannot be combined with ``n_rashomon``.
+
+    low_dist_thres : float, default=10.0
+        Embedding-space radius within which FP pairs are resampled in phase
+        3; also sets the NN gradient multiplier. Only used if
+        ``localmap=True``.
+"""
+
+
 class PaCMAP(_BasePaCMAP):
     __doc__ = (
         """Pairwise Controlled Manifold Approximation Projection.
@@ -788,11 +803,17 @@ class PaCMAP(_BasePaCMAP):
     weight schedule: MN pairs dominate early to set the global layout, then
     are switched off so NN and FP pairs refine local structure.
 
+    Two extensions are available as switches, both off by default:
+    ``localmap=True`` (local graph adjustment, [Wang2025]_) and
+    ``n_rashomon`` (trustworthy-neighbor refinement, [Sun2026]_). They
+    cannot be combined.
+
     Read more in the :ref:`User Guide <pacmap>`.
 
     Parameters
     ----------"""
         + _SHARED_PARAMS_DOC
+        + _LOCALMAP_PARAMS_DOC
         + _RASHOMON_PARAMS_DOC
         + _COMMON_TAIL_DOC
         + _ATTRIBUTES_DOC
@@ -801,13 +822,15 @@ class PaCMAP(_BasePaCMAP):
         + """
     See Also
     --------
-    LocalMAP : PaCMAP with local graph adjustment in the last phase.
     TSNE : T-distributed Stochastic Neighbor Embedding.
 
     References
     ----------"""
         + _REFERENCES_DOC
         + """
+    .. [Wang2025] Wang, Y., Sun, Y., Huang, H., & Rudin, C. (2025).
+       Dimension Reduction with Locally Adjusted Graphs. AAAI, 39(20).
+
     Examples
     --------
     >>> import numpy as np
@@ -816,11 +839,14 @@ class PaCMAP(_BasePaCMAP):
     >>> X_embedded = PaCMAP(random_state=0).fit_transform(X)
     >>> X_embedded.shape
     (100, 2)
+    >>> X_local = PaCMAP(localmap=True, random_state=0).fit_transform(X)
     """
     )
 
     _parameter_constraints: dict = {
         **_BASE_PARAMETER_CONSTRAINTS,
+        "localmap": ["boolean"],
+        "low_dist_thres": [Interval(Real, 0, None, closed="neither")],
         "n_rashomon": [Interval(Integral, 2, None, closed="left"), None],
         "rashomon_penalty": [Interval(Real, 0, None, closed="left")],
     }
@@ -838,6 +864,8 @@ class PaCMAP(_BasePaCMAP):
         init="pca",
         apply_pca=True,
         neighbors_transformer=None,
+        localmap=False,
+        low_dist_thres=10.0,
         n_rashomon=None,
         rashomon_penalty=1.0,
         random_state=None,
@@ -854,140 +882,37 @@ class PaCMAP(_BasePaCMAP):
         self.init = init
         self.apply_pca = apply_pca
         self.neighbors_transformer = neighbors_transformer
+        self.localmap = localmap
+        self.low_dist_thres = low_dist_thres
         self.n_rashomon = n_rashomon
         self.rashomon_penalty = rashomon_penalty
         self.random_state = random_state
         self.n_jobs = n_jobs
         self.verbose = verbose
 
-    def _optimize(self, Y, pair_nn, pair_mn, pair_fp, neighbors, num_iters,
-                  seed, n_threads):
-        n_samples = Y.shape[0]
-        pairs = np.concatenate([pair_nn, pair_mn, pair_fp])
-        types = _pair_types(len(pair_nn), len(pair_mn), len(pair_fp))
-        indptr, other, types = _incidence_list(pairs, types, n_samples)
-        grad = np.empty_like(Y)
-        node_loss = np.empty(n_samples)
-        adam = _Adam(Y.shape, self.learning_rate)
-        n_iter = sum(num_iters)
-        loss = np.nan
-        for itr in range(n_iter):
-            w_nn, w_mn, w_fp = _phase_weights(itr, num_iters[0], num_iters[1])
-            pacmap_gradient(
-                Y, indptr, other, types, w_nn, w_mn, w_fp, grad, node_loss,
-                n_threads,
+    @property
+    def _verbose_name(self):
+        return "LocalMAP" if self.localmap else "PaCMAP"
+
+    def _check_switches(self):
+        # NOTE: LocalMAP must NOT be combined with Rashomon neighbor
+        # refinement. Do not relax this check. The refined NN graph favours
+        # pairs that are already stably close across seeds, which lowers the
+        # reciprocity of the NN graph (0.81 -> 0.54 on USPS); LocalMAP's
+        # phase-3 local FP repulsion and sharpened NN attraction then tear
+        # every cluster into filaments and rings (see
+        # benchmarks/plot_variants.py). Pinned by
+        # test_localmap_rejects_rashomon.
+        if self.localmap and self.n_rashomon is not None:
+            raise ValueError(
+                "localmap=True cannot be combined with n_rashomon: Rashomon "
+                "neighbor refinement fragments LocalMAP embeddings into "
+                "disconnected filaments. Use one switch or the other."
             )
-            loss = 0.5 * node_loss.sum()
-            adam.update(Y, grad, itr)
-            if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
-                print(f"[PaCMAP] Iteration {itr + 1}: loss = {loss:.6f}")
-        loss = _finalize(Y, indptr, other, types, num_iters, n_threads, grad,
-                         node_loss, "PaCMAP")
-        return Y, loss, n_iter, pair_fp
 
-
-class LocalMAP(_BasePaCMAP):
-    __doc__ = (
-        """LocalMAP: PaCMAP with local graph adjustment.
-
-    Runs PaCMAP's first two phases unchanged. In the third phase it
-    (a) multiplies the NN gradient coefficient by
-    :math:`(\\text{low\\_dist\\_thres}/2)/\\sqrt{\\tilde d_{ij}}`, pulling
-    close neighbors harder, and (b) every 10 iterations resamples the FP
-    pairs among points within ``low_dist_thres`` of each point in the
-    current embedding, so repulsion acts between nearby clusters.
-
-    Phase-3 behavior starts at iteration ``n1 + n2 + 1`` and resampling at
-    the first multiple of 10 after ``n1 + n2``, matching the reference
-    implementation.
-
-    Parameters
-    ----------"""
-        + _SHARED_PARAMS_DOC
-        + """
-    low_dist_thres : float, default=10.0
-        Embedding-space radius within which FP pairs are resampled in
-        phase 3; also sets the NN gradient multiplier.
-
-    Rashomon neighbor refinement (``n_rashomon``) is deliberately not
-    available: combined with LocalMAP's phase-3 local repulsion, the refined
-    neighbor graph fragments clusters into disconnected filaments.
-"""
-        + _COMMON_TAIL_DOC
-        + _ATTRIBUTES_DOC
-        + _INPUT_ATTRIBUTES_DOC
-        + """
-    See Also
-    --------
-    PaCMAP : Pairwise Controlled Manifold Approximation Projection.
-
-    References
-    ----------"""
-        + _REFERENCES_DOC
-        + """
-    .. [Wang2025] Wang, Y., Sun, Y., Huang, H., & Rudin, C. (2025).
-       Dimension Reduction with Locally Adjusted Graphs. AAAI, 39(20).
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from pacmap_sklearn import LocalMAP
-    >>> X = np.random.RandomState(0).rand(100, 5)
-    >>> X_embedded = LocalMAP(random_state=0).fit_transform(X)
-    >>> X_embedded.shape
-    (100, 2)
-    """
-    )
-
-    _verbose_name = "LocalMAP"
-
-    # NOTE: LocalMAP must NOT support Rashomon neighbor refinement
-    # (``n_rashomon`` / ``rashomon_penalty``). Do not add these parameters
-    # here or to ``__init__``. The refined NN graph favours pairs that are
-    # already stably close across seeds, which lowers reciprocity of the NN
-    # graph (0.81 -> 0.54 on USPS); LocalMAP's phase-3 local FP repulsion and
-    # sharpened NN attraction then tear every cluster into filaments and
-    # rings (see benchmarks/plot_variants.py). The parameters are omitted
-    # entirely, rather than validated and rejected, so they cannot be set via
-    # set_params or a hyperparameter search either.
-    # Pinned by test_localmap_has_no_rashomon_parameters.
-    _parameter_constraints: dict = {
-        **_BASE_PARAMETER_CONSTRAINTS,
-        "low_dist_thres": [Interval(Real, 0, None, closed="neither")],
-    }
-
-    def __init__(
-        self,
-        n_components=2,
-        *,
-        n_neighbors=10,
-        mn_ratio=0.5,
-        fp_ratio=2.0,
-        metric="euclidean",
-        learning_rate=1.0,
-        num_iters=(100, 100, 250),
-        init="pca",
-        apply_pca=True,
-        neighbors_transformer=None,
-        low_dist_thres=10.0,
-        random_state=None,
-        n_jobs=None,
-        verbose=0,
-    ):
-        self.n_components = n_components
-        self.n_neighbors = n_neighbors
-        self.mn_ratio = mn_ratio
-        self.fp_ratio = fp_ratio
-        self.metric = metric
-        self.learning_rate = learning_rate
-        self.num_iters = num_iters
-        self.init = init
-        self.apply_pca = apply_pca
-        self.neighbors_transformer = neighbors_transformer
-        self.low_dist_thres = low_dist_thres
-        self.random_state = random_state
-        self.n_jobs = n_jobs
-        self.verbose = verbose
+    def _fit(self, X):
+        self._check_switches()
+        return super()._fit(X)
 
     def _optimize(self, Y, pair_nn, pair_mn, pair_fp, neighbors, num_iters,
                   seed, n_threads):
@@ -1000,22 +925,26 @@ class LocalMAP(_BasePaCMAP):
         node_loss = np.empty(n_samples)
         adam = _Adam(Y.shape, self.learning_rate)
         n_iter = sum(num_iters)
+        name = self._verbose_name
+
+        # LocalMAP state (unused when localmap=False).
         phase3_after = num_iters[0] + num_iters[1]
         nn_recip_coef = self.low_dist_thres / 2.0
         fallback = np.zeros(n_samples, dtype=np.intp)
         fallback_frac = None  # of the last resampling round
+
         loss = np.nan
         for itr in range(n_iter):
             w_nn, w_mn, w_fp = _phase_weights(itr, num_iters[0], num_iters[1])
-            # Strict inequality as in the reference implementation.
-            in_phase3 = itr > phase3_after
+            # LocalMAP phase 3 uses a strict inequality, as in the reference.
+            local_phase = self.localmap and itr > phase3_after
             pacmap_gradient(
                 Y, indptr, other, inc_types, w_nn, w_mn, w_fp, grad, node_loss,
-                n_threads, nn_recip_coef if in_phase3 else 0.0,
+                n_threads, nn_recip_coef if local_phase else 0.0,
             )
             loss = 0.5 * node_loss.sum()
             adam.update(Y, grad, itr)
-            if in_phase3 and itr % _LOCALMAP_RESAMPLE_EVERY == 0:
+            if local_phase and itr % _LOCALMAP_RESAMPLE_EVERY == 0:
                 pair_fp = resample_fp_nearby(
                     Y, neighbors, pair_fp, self.low_dist_thres, seed, itr,
                     n_threads, fallback,
@@ -1026,7 +955,7 @@ class LocalMAP(_BasePaCMAP):
                     np.concatenate([pair_nn, pair_mn, pair_fp]), types, n_samples
                 )
             if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
-                print(f"[LocalMAP] Iteration {itr + 1}: loss = {loss:.6f}")
+                print(f"[{name}] Iteration {itr + 1}: loss = {loss:.6f}")
         if fallback_frac is not None and fallback_frac > _LOCALMAP_FALLBACK_WARN:
             warnings.warn(
                 f"In the last LocalMAP resampling round {fallback_frac:.0%} of "
@@ -1038,5 +967,5 @@ class LocalMAP(_BasePaCMAP):
                 UserWarning,
             )
         loss = _finalize(Y, indptr, other, inc_types, num_iters, n_threads,
-                         grad, node_loss, "LocalMAP")
+                         grad, node_loss, name)
         return Y, loss, n_iter, pair_fp

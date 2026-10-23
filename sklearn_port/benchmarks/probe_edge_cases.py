@@ -92,7 +92,9 @@ RUNNER = textwrap.dedent(
     """
     import json, sys, warnings
     import numpy as np
-    from pacmap_sklearn import PaCMAP, LocalMAP
+    from functools import partial
+    from pacmap_sklearn import PaCMAP
+    LocalMAP = partial(PaCMAP, localmap=True)
     rng = np.random.RandomState(0)
     kw = {}
     %s

@@ -1,21 +1,36 @@
 # PaCMAP → scikit-learn port
 
-Staging area for a `sklearn.manifold.PaCMAP` proposal. The package contains
-two estimators, `PaCMAP` and `LocalMAP`.
+Staging area for a `sklearn.manifold.PaCMAP` proposal. The package exposes a
+single estimator, `PaCMAP`.
 
-* They depend only on numpy, scipy and scikit-learn at runtime.
-* Their kernels are written in Cython + OpenMP.
-* Both pass `sklearn.utils.estimator_checks` (euclidean, angular,
-  manhattan, precomputed, and PaCMAP with Rashomon refinement on).
+* It depends only on numpy, scipy and scikit-learn at runtime.
+* Its kernels are written in Cython + OpenMP.
+* It passes `sklearn.utils.estimator_checks` (euclidean, angular,
+  manhattan, precomputed, with `localmap=True`, and with `n_rashomon` set).
 
-`PaCMAP` also takes an optional Rashomon trustworthy-neighbor refinement
-(`n_rashomon`, see below). `LocalMAP` deliberately does not.
+Two extensions are hidden behind switches, both off by default:
 
-**Scope for upstream.** Only `PaCMAP` without `n_rashomon` is meant for the
-scikit-learn PR. LocalMAP (AAAI 2025) and the Rashomon refinement
-(AISTATS 2026) are too recent for the
+| switch | method | effect |
+|---|---|---|
+| `localmap=True` (+ `low_dist_thres`) | LocalMAP, Wang et al. (AAAI 2025) | local graph adjustment in phase 3 |
+| `n_rashomon=k` (+ `rashomon_penalty`) | Sun et al. (AISTATS 2026) | trustworthy-neighbor refinement |
+
+The two switches cannot be combined; `fit` raises `ValueError`. See
+"Not supported with LocalMAP" below.
+
+```python
+PaCMAP()                     # plain PaCMAP
+PaCMAP(localmap=True)        # LocalMAP
+PaCMAP(n_rashomon=5)         # Rashomon-refined PaCMAP (experimental, warns)
+```
+
+**Scope for upstream.** The scikit-learn PR would ship `PaCMAP` with both
+switches removed. LocalMAP and the Rashomon refinement are too recent for
+the
 [inclusion criteria](https://scikit-learn.org/stable/faq.html#what-are-the-inclusion-criteria-for-new-algorithms).
-They live here so the contrib package gets them with the same kernels.
+As switches, they are easy to strip: two parameters each, plus one
+`if self.localmap` branch in `_optimize` and one `if self.n_rashomon`
+branch in `_fit`.
 
 Files are laid out as they would be inside scikit-learn:
 
@@ -112,10 +127,10 @@ module-level global, and every `PaCMAP.__init__` overwrites it.
 Sampled pairs are not bitwise equal to the reference's, because the RNG is
 different. They follow the same distribution.
 
-## LocalMAP
+## LocalMAP (`localmap=True`)
 
-`LocalMAP` reproduces the reference algorithm, including its iteration
-indexing. Phase 3 has two changes relative to PaCMAP.
+`PaCMAP(localmap=True)` reproduces the reference LocalMAP, including its
+iteration indexing. With `localmap=False`, `low_dist_thres` is ignored. Phase 3 has two changes relative to PaCMAP.
 
 1. **NN gradient.** The NN gradient coefficient is multiplied by
    $(\text{low\_dist\_thres}/2)/\sqrt{\tilde d_{ij}}$. This is an extra
@@ -228,8 +243,8 @@ What the numbers show:
   are mostly cross-topic. Choosing the most stable of them is not the same
   as choosing same-label ones.
 
-**Not supported on LocalMAP.** The LocalMAP rows above come from an earlier
-version of the branch. Although its metrics hold up, the LocalMAP +
+**Not supported with LocalMAP.** The LocalMAP rows above come from an
+earlier version of the branch. Although its metrics hold up, the LocalMAP +
 refinement embedding fragments every USPS digit into filaments and rings
 (`benchmarks/plot_variants.py`).
 
@@ -238,10 +253,11 @@ refinement embedding fragments every USPS digit into filaments and rings
 * LocalMAP's phase-3 local repulsion then tears clusters apart. PaCMAP has
   no local repulsion and does not fragment.
 
-`LocalMAP` therefore has no `n_rashomon` / `rashomon_penalty` parameters at
-all. Constructing it with them raises `TypeError`, and `set_params` raises
-`ValueError`. A comment in the code and
-`test_localmap_has_no_rashomon_parameters` keep it that way.
+`PaCMAP(localmap=True, n_rashomon=...)` therefore raises `ValueError` at
+`fit`, including when the combination is set via `set_params`. A NOTE in
+`PaCMAP._check_switches` and `test_localmap_rejects_rashomon` keep it that
+way. `benchmarks/plot_variants.py` bypasses the check only to reproduce the
+evidence.
 
 ## Results
 

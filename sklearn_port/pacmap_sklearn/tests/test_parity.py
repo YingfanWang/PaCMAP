@@ -116,10 +116,10 @@ def test_embedding_quality_matches_reference():
 
 
 def test_localmap_quality_matches_reference():
-    from pacmap_sklearn import LocalMAP
+    from pacmap_sklearn import PaCMAP
 
     X, y = load_digits(return_X_y=True)
-    ports = [_scores(X, y, LocalMAP(random_state=s).fit_transform(X)) for s in range(3)]
+    ports = [_scores(X, y, PaCMAP(localmap=True, random_state=s).fit_transform(X)) for s in range(3)]
     refs = [_scores(X, y, ref.LocalMAP(random_state=s).fit_transform(X)) for s in range(3)]
     port_tw, port_acc = np.mean(ports, axis=0)
     ref_tw, ref_acc = np.mean(refs, axis=0)
