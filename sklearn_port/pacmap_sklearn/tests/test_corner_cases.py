@@ -271,3 +271,55 @@ def test_localmap_tiny_threshold_completes():
 def test_degenerate_shapes_rejected(shape):
     with pytest.raises(ValueError):
         PaCMAP().fit(np.ones(shape))
+
+
+# --- runtime warnings for unverified territory --------------------------------
+
+
+def test_rashomon_warns_experimental():
+    X = np.random.RandomState(0).rand(200, 5)
+    with pytest.warns(UserWarning, match="n_rashomon is experimental"):
+        PaCMAP(n_rashomon=2, **FAST).fit(X)
+
+
+def test_no_rashomon_warning_by_default():
+    X = np.random.RandomState(0).rand(200, 5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        PaCMAP(**FAST).fit(X)
+        LocalMAP(**FAST).fit(X)
+
+
+def test_localmap_warns_when_threshold_too_small():
+    X = np.random.RandomState(0).rand(500, 5)
+    with pytest.warns(UserWarning, match="local graph adjustment is largely inactive"):
+        LocalMAP(low_dist_thres=1e-6, **FAST).fit(X)
+
+
+def test_large_n_exact_search_warns(monkeypatch):
+    import pacmap_sklearn._pacmap as mod
+
+    monkeypatch.setattr(mod, "_EXACT_KNN_WARN_N", 100)
+    X = np.random.RandomState(0).rand(200, 5)
+    with pytest.warns(UserWarning, match="Exact nearest-neighbor search"):
+        PaCMAP(**FAST).fit(X)
+    with warnings.catch_warnings():  # not with an ANN transformer
+        warnings.simplefilter("error")
+        from sklearn.neighbors import KNeighborsTransformer
+
+        PaCMAP(neighbors_transformer=KNeighborsTransformer(n_neighbors=61, mode="distance"),
+               **FAST).fit(X)
+
+
+def test_openmp_disabled_warns(monkeypatch):
+    import pacmap_sklearn._pacmap as mod
+
+    monkeypatch.setattr(mod, "OPENMP_ENABLED", False)
+    with pytest.warns(UserWarning, match="compiled without OpenMP"):
+        PaCMAP(**FAST).fit(np.random.RandomState(0).rand(100, 5))
+
+
+def test_this_build_has_openmp():
+    from pacmap_sklearn._pacmap_utils import OPENMP_ENABLED
+
+    assert OPENMP_ENABLED

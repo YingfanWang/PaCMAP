@@ -29,6 +29,7 @@ from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
 from sklearn.utils.validation import check_array, check_non_negative, validate_data
 
 from ._pacmap_utils import (
+    OPENMP_ENABLED,
     build_incidence,
     pacmap_gradient,
     resample_fp_nearby,
@@ -61,6 +62,15 @@ _LOCALMAP_RESAMPLE_EVERY = 10
 # neighbor set that the k refined neighbors are chosen from.
 _N_RASHOMON_CANDIDATES = 50
 _RASHOMON_CHUNK = 65536  # rows per chunk when computing candidate distances
+
+# Above this many samples the default exact neighbor search (O(n^2)) usually
+# dominates the fit; we warn and point to ``neighbors_transformer``.
+_EXACT_KNN_WARN_N = 100_000
+
+# LocalMAP: warn if, in the last resampling round, more than this fraction of
+# FP slots could not find a partner within ``low_dist_thres`` and kept their
+# previous (global) partner, i.e. the local adjustment is mostly inactive.
+_LOCALMAP_FALLBACK_WARN = 0.5
 
 
 def _phase_weights(itr, n_iter_phase1, n_iter_phase2):
@@ -286,6 +296,15 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
         n_search = min(n_nn + _N_EXTRA_NEIGHBORS, n_samples - 1)
         if self.neighbors_transformer is not None:
             return self._knn_from_transformer(X, n_nn, n_search)
+        if n_samples > _EXACT_KNN_WARN_N and self.metric != "precomputed":
+            warnings.warn(
+                f"Exact nearest-neighbor search on n_samples={n_samples} costs "
+                "O(n_samples^2) and will likely dominate the fit time. For "
+                "large datasets pass an approximate search, e.g. "
+                "neighbors_transformer=PyNNDescentTransformer("
+                f"n_neighbors={n_nn + _N_EXTRA_NEIGHBORS + 1}).",
+                UserWarning,
+            )
         sk_metric = {"angular": "cosine"}.get(self.metric, self.metric)
         knn = NearestNeighbors(
             n_neighbors=n_search, metric=sk_metric, n_jobs=self.n_jobs
@@ -509,6 +528,15 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
         num_iters = self._check_num_iters()
         random_state = check_random_state(self.random_state)
         n_threads = _openmp_effective_n_threads()
+        if not OPENMP_ENABLED:
+            # Builds without OpenMP (e.g. macOS without libomp) run every
+            # kernel single-threaded; results are identical, only slower.
+            warnings.warn(
+                "pacmap_sklearn was compiled without OpenMP support; all "
+                "kernels run single-threaded. Rebuild with an OpenMP-enabled "
+                "compiler (on macOS: `brew install libomp`) for parallelism.",
+                UserWarning,
+            )
 
         n_nn, n_mn, n_fp = self._n_pairs(n_samples)
         if precomputed:
@@ -523,6 +551,17 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
         if getattr(self, "n_rashomon", None) is None:
             neighbors = self._scaled_neighbors(dist, idx, n_nn)
         else:
+            # The paper (Sun et al., 2026) leaves several choices open; the
+            # ones made here are listed in the warning and in README.md.
+            warnings.warn(
+                "n_rashomon is experimental. Implementation choices not fixed "
+                "by Sun et al. (2026): the same seeded runs serve as "
+                "calibration and Rashomon set; mu and the threshold M are "
+                "means (Appendix B), not medians (Eq. 5); embedding distances "
+                "are not standardized; rashomon_penalty defaults to 1.0; MN "
+                "and FP pairs are resampled for the final fit.",
+                UserWarning,
+            )
             neighbors, candidates, psi = self._rashomon_neighbors(
                 X_search, pca_init, dist, idx, n_nn, n_mn, n_fp, num_iters,
                 random_state, n_threads,
@@ -654,7 +693,7 @@ _SHARED_PARAMS_DOC = """
 
 _RASHOMON_PARAMS_DOC = """
     n_rashomon : int >= 2 or None, default=None
-        If set, refine the NN pairs with the trustworthy-neighbor procedure
+        **Experimental** (a ``UserWarning`` is emitted when set). If set, refine the NN pairs with the trustworthy-neighbor procedure
         of [Sun2026]_ (its Algorithm 2) before the final fit: fit
         ``n_rashomon`` embeddings with different seeds, score each of the 50
         nearest input-space candidates of every point by its mean
@@ -963,6 +1002,8 @@ class LocalMAP(_BasePaCMAP):
         n_iter = sum(num_iters)
         phase3_after = num_iters[0] + num_iters[1]
         nn_recip_coef = self.low_dist_thres / 2.0
+        fallback = np.zeros(n_samples, dtype=np.intp)
+        fallback_frac = None  # of the last resampling round
         loss = np.nan
         for itr in range(n_iter):
             w_nn, w_mn, w_fp = _phase_weights(itr, num_iters[0], num_iters[1])
@@ -977,13 +1018,25 @@ class LocalMAP(_BasePaCMAP):
             if in_phase3 and itr % _LOCALMAP_RESAMPLE_EVERY == 0:
                 pair_fp = resample_fp_nearby(
                     Y, neighbors, pair_fp, self.low_dist_thres, seed, itr,
-                    n_threads,
+                    n_threads, fallback,
                 )
+                if len(pair_fp):
+                    fallback_frac = fallback.sum() / len(pair_fp)
                 indptr, other, inc_types = _incidence_list(
                     np.concatenate([pair_nn, pair_mn, pair_fp]), types, n_samples
                 )
             if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
                 print(f"[LocalMAP] Iteration {itr + 1}: loss = {loss:.6f}")
+        if fallback_frac is not None and fallback_frac > _LOCALMAP_FALLBACK_WARN:
+            warnings.warn(
+                f"In the last LocalMAP resampling round {fallback_frac:.0%} of "
+                "further pairs found no partner within low_dist_thres="
+                f"{self.low_dist_thres:g} and kept their previous partner, so "
+                "the local graph adjustment is largely inactive. "
+                "low_dist_thres is probably too small for the scale of this "
+                "embedding.",
+                UserWarning,
+            )
         loss = _finalize(Y, indptr, other, inc_types, num_iters, n_threads,
                          grad, node_loss, "LocalMAP")
         return Y, loss, n_iter, pair_fp

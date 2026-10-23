@@ -26,6 +26,21 @@ from libc.stdlib cimport malloc, free
 ctypedef Py_ssize_t intp_t
 ctypedef double float64_t
 
+# Whether this extension was compiled with OpenMP. Without it every prange
+# runs serially; _pacmap.py warns about that at fit time (cf. scikit-learn
+# #29665, where a build change silently disabled OpenMP in t-SNE).
+cdef extern from *:
+    """
+    #ifdef _OPENMP
+    #define PACMAP_OPENMP_ENABLED 1
+    #else
+    #define PACMAP_OPENMP_ENABLED 0
+    #endif
+    """
+    int PACMAP_OPENMP_ENABLED
+
+OPENMP_ENABLED = bool(PACMAP_OPENMP_ENABLED)
+
 # Metric codes, mirrored in _pacmap.py
 cdef enum:
     EUCLIDEAN = 0
@@ -239,7 +254,8 @@ def resample_fp_nearby(const float64_t[:, ::1] Y,
                        const intp_t[:, ::1] neighbors,
                        const intp_t[:, ::1] old_fp,
                        float64_t low_dist_thres,
-                       uint64_t seed, uint64_t round_id, int n_threads):
+                       uint64_t seed, uint64_t round_id, int n_threads,
+                       intp_t[::1] fallback=None):
     """LocalMAP: resample further pairs among points close in the embedding.
 
     Mirrors ``sample_FP_nearby`` / ``sample_FP_pair_nearby`` of the reference
@@ -262,8 +278,13 @@ def resample_fp_nearby(const float64_t[:, ::1] Y,
 
     Randomness comes from a per-(row, round) counter-based stream, so the
     result does not depend on ``n_threads``.
+
+    If ``fallback`` (length ``n_samples``) is given, ``fallback[i]`` receives
+    the number of slots of point ``i`` that kept their previous partner.
     """
     cdef intp_t n_samples = neighbors.shape[0]
+    cdef bint count_fallback = fallback is not None
+    cdef intp_t n_fallback
     cdef intp_t n_nn = neighbors.shape[1]
     cdef intp_t n_fp = old_fp.shape[0] // n_samples
     cdef intp_t dim = Y.shape[1]
@@ -313,9 +334,13 @@ def resample_fp_nearby(const float64_t[:, ::1] Y,
             # checks compare against it, exactly as the reference does.
             pairs[i * n_fp + k, 0] = i
             pairs[i * n_fp + k, 1] = j
+        n_fallback = 0
         for k in range(n_fp):
             if pairs[i * n_fp + k, 1] == -1:
                 pairs[i * n_fp + k, 1] = old_fp[i * n_fp + k, 1]
+                n_fallback = n_fallback + 1
+        if count_fallback:
+            fallback[i] = n_fallback
     return out
 
 

@@ -399,6 +399,26 @@ The port now counts every draw:
 * **Tiny negative precomputed distances.** These are rejected, as `TSNE`
   does (#11376, #5772).
 
+## Runtime warnings
+
+The code warns at fit time wherever results come from territory that has not
+been verified. Every warning is conditional, so default fits on digits,
+USPS and 20NG emit none.
+
+| warning | when it fires | why |
+|---|---|---|
+| `n_rashomon is experimental …` | `n_rashomon` is set | lists the five implementation choices the paper leaves open |
+| `… local graph adjustment is largely inactive …` | LocalMAP, more than 50% of FP slots in the last resampling round kept their old partner | `low_dist_thres` is too small for the embedding's scale, so LocalMAP is effectively PaCMAP |
+| `Exact nearest-neighbor search on n_samples=… costs O(n_samples^2) …` | n_samples > 100k, no `neighbors_transformer`, not precomputed | points to an ANN transformer |
+| `… compiled without OpenMP …` | the extension was built without OpenMP | the macOS / Windows builds are untested; results are identical, only single-threaded |
+| `All samples are identical …` | zero-variance input | the embedding is degenerate |
+| `… too small for the requested pairs …` | pair counts reduced for small n | states requested vs used |
+| `init has a constant column …` | array `init` with a constant column | that coordinate never moves |
+| `neighbors_transformer returned k neighbors …` | the graph is smaller than `n_neighbors + 50` | the candidate pool differs from the exact search |
+
+`pacmap_sklearn._pacmap_utils.OPENMP_ENABLED` reports whether the build has
+OpenMP. `test_this_build_has_openmp` fails on a build without it.
+
 ## Open questions to settle before proposing upstream
 
 1. **ANN plug-in API.** `neighbors_transformer` (an estimator as a parameter)
