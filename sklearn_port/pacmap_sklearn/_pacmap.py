@@ -7,22 +7,25 @@ scikit-learn at runtime, compiled kernels in ``_pacmap_utils.pyx``.
 # Authors: The scikit-learn developers
 # SPDX-License-Identifier: BSD-3-Clause
 
+import warnings
 from numbers import Integral, Real
 
 import numpy as np
+from scipy.sparse import issparse
 
 from sklearn.base import (
     BaseEstimator,
     ClassNamePrefixFeaturesOutMixin,
     TransformerMixin,
     _fit_context,
+    clone,
 )
 from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_random_state
 from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
-from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
 from sklearn.utils.validation import check_non_negative, validate_data
 
 from ._pacmap_utils import (
@@ -123,6 +126,7 @@ _BASE_PARAMETER_CONSTRAINTS = {
     "num_iters": [Interval(Integral, 0, None, closed="left"), tuple],
     "init": [StrOptions({"pca", "random"}), np.ndarray],
     "apply_pca": ["boolean"],
+    "neighbors_transformer": [None, HasMethods(["fit_transform"])],
     "random_state": ["random_state"],
     "n_jobs": [None, Integral],
     "verbose": ["verbose"],
@@ -226,9 +230,12 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
         return np.ascontiguousarray(X, dtype=np.float64), pca_init
 
     def _knn(self, X, n_nn):
-        """Exact kNN (self excluded), ``n_nn + 50`` neighbors per point."""
+        """kNN (self excluded), ``n_nn + 50`` neighbors per point, sorted by
+        distance: exact by default, or from ``neighbors_transformer``."""
         n_samples = X.shape[0]
         n_search = min(n_nn + _N_EXTRA_NEIGHBORS, n_samples - 1)
+        if self.neighbors_transformer is not None:
+            return self._knn_from_transformer(X, n_nn, n_search)
         sk_metric = {"angular": "cosine"}.get(self.metric, self.metric)
         knn = NearestNeighbors(
             n_neighbors=n_search, metric=sk_metric, n_jobs=self.n_jobs
@@ -236,6 +243,59 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
         dist, idx = knn.kneighbors(return_distance=True)
         if self.metric == "angular":
             dist = np.sqrt(2.0 * np.maximum(dist, 0.0))
+        return dist, idx
+
+    def _knn_from_transformer(self, X, n_nn, n_search):
+        """Run ``neighbors_transformer`` on the preprocessed data and read the
+        sparse distance graph it returns (KNeighborsTransformer convention:
+        shape (n_samples, n_samples), each row holding that point's nearest
+        neighbors, possibly including itself at distance 0)."""
+        n_samples = X.shape[0]
+        self.neighbors_transformer_ = clone(self.neighbors_transformer)
+        graph = self.neighbors_transformer_.fit_transform(X)
+        if not issparse(graph) or graph.shape != (n_samples, n_samples):
+            raise ValueError(
+                "neighbors_transformer must return a sparse distance graph of "
+                f"shape (n_samples, n_samples) = {(n_samples, n_samples)}; got "
+                f"{type(graph).__name__} of shape {getattr(graph, 'shape', None)}."
+            )
+        graph = graph.tocsr()
+        graph.sum_duplicates()
+        rows = np.repeat(np.arange(n_samples), np.diff(graph.indptr))
+        cols = graph.indices.astype(np.intp)
+        data = np.asarray(graph.data, dtype=np.float64)
+        if np.any(data < 0) or not np.all(np.isfinite(data)):
+            raise ValueError(
+                "neighbors_transformer returned negative or non-finite distances."
+            )
+        keep = cols != rows  # drop self-loops
+        rows, cols, data = rows[keep], cols[keep], data[keep]
+        counts = np.bincount(rows, minlength=n_samples)
+        k = int(min(counts.min(), n_search))
+        if k < n_nn:
+            raise ValueError(
+                f"neighbors_transformer must return at least n_neighbors={n_nn} "
+                f"neighbors per point besides the point itself; the sparsest "
+                f"row has {counts.min()}. Build the graph with at least "
+                f"n_neighbors + {_N_EXTRA_NEIGHBORS} + 1 = "
+                f"{n_nn + _N_EXTRA_NEIGHBORS + 1} neighbors."
+            )
+        if k < n_search:
+            warnings.warn(
+                f"neighbors_transformer returned {k} neighbors per point "
+                f"(excluding self); the reference uses n_neighbors + "
+                f"{_N_EXTRA_NEIGHBORS} = {n_search} candidates for the scaled "
+                "re-ranking. Results may differ from the exact search.",
+                UserWarning,
+            )
+        # Sort each row by (distance, index) and keep its k nearest.
+        order = np.lexsort((cols, data, rows))
+        rows, cols, data = rows[order], cols[order], data[order]
+        start = np.zeros(n_samples, dtype=np.intp)
+        np.cumsum(counts[:-1], out=start[1:])
+        take = (start[:, None] + np.arange(k)).ravel()
+        dist = data[take].reshape(n_samples, k)
+        idx = cols[take].reshape(n_samples, k)
         return dist, idx
 
     @staticmethod
@@ -375,6 +435,10 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
                     'The parameter init="pca" cannot be used with '
                     'metric="precomputed".'
                 )
+            if self.neighbors_transformer is not None:
+                raise ValueError(
+                    'neighbors_transformer cannot be used with metric="precomputed".'
+                )
         num_iters = self._check_num_iters()
         random_state = check_random_state(self.random_state)
         n_threads = _openmp_effective_n_threads()
@@ -502,6 +566,23 @@ _SHARED_PARAMS_DOC = """
         If True and ``n_features > 100``, center the data and project it onto
         its top 100 principal components before searching for neighbors.
         Ignored for ``metric`` in {"hamming", "precomputed"}.
+
+    neighbors_transformer : estimator or None, default=None
+        Optional transformer used for the nearest-neighbor search instead of
+        the exact :class:`~sklearn.neighbors.NearestNeighbors` search, e.g.
+        an approximate-nearest-neighbor wrapper such as those in
+        :ref:`sphx_glr_auto_examples_neighbors_approximate_nearest_neighbors.py`.
+        A clone is fitted with ``fit_transform`` on the *preprocessed* data
+        (after the optional PCA projection and scaling) and must return a
+        sparse distance graph of shape (n_samples, n_samples) following the
+        :class:`~sklearn.neighbors.KNeighborsTransformer` convention
+        (``mode="distance"``; self-loops are ignored). Build it with at least
+        ``n_neighbors + 51`` neighbors per point to match the exact search.
+        Distances are used as returned, so they must be in ``metric``
+        (for "angular", :math:`\\sqrt{2 - 2\\cos\\theta}`). Mid-near
+        pairs are still computed from the features, so the algorithm is
+        unchanged apart from which neighbors the transformer finds. Cannot be
+        used with ``metric="precomputed"``.
 """
 
 _RASHOMON_PARAMS_DOC = """
@@ -566,6 +647,10 @@ _RASHOMON_ATTRIBUTES_DOC = """
 """
 
 _INPUT_ATTRIBUTES_DOC = """
+    neighbors_transformer_ : estimator
+        Fitted clone of ``neighbors_transformer``. Only defined if
+        ``neighbors_transformer`` is set.
+
     n_features_in_ : int
         Number of features seen during :term:`fit`.
 
@@ -645,6 +730,7 @@ class PaCMAP(_BasePaCMAP):
         num_iters=(100, 100, 250),
         init="pca",
         apply_pca=True,
+        neighbors_transformer=None,
         n_rashomon=None,
         rashomon_penalty=1.0,
         random_state=None,
@@ -660,6 +746,7 @@ class PaCMAP(_BasePaCMAP):
         self.num_iters = num_iters
         self.init = init
         self.apply_pca = apply_pca
+        self.neighbors_transformer = neighbors_transformer
         self.n_rashomon = n_rashomon
         self.rashomon_penalty = rashomon_penalty
         self.random_state = random_state
@@ -772,6 +859,7 @@ class LocalMAP(_BasePaCMAP):
         num_iters=(100, 100, 250),
         init="pca",
         apply_pca=True,
+        neighbors_transformer=None,
         low_dist_thres=10.0,
         random_state=None,
         n_jobs=None,
@@ -786,6 +874,7 @@ class LocalMAP(_BasePaCMAP):
         self.num_iters = num_iters
         self.init = init
         self.apply_pca = apply_pca
+        self.neighbors_transformer = neighbors_transformer
         self.low_dist_thres = low_dist_thres
         self.random_state = random_state
         self.n_jobs = n_jobs

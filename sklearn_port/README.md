@@ -293,22 +293,69 @@ A profile on USPS splits the port's 2.1 s fit as follows:
 | Randomized SVD to 100 dims | 0.78 s |
 | Exact kNN | 0.40 s |
 
+## Approximate nearest neighbors (`neighbors_transformer`)
+
+Both estimators take a `neighbors_transformer`. This is the scikit-learn
+pattern from the gallery example [Approximate nearest neighbors in
+TSNE](https://scikit-learn.org/stable/auto_examples/neighbors/approximate_nearest_neighbors.html),
+adapted to PaCMAP.
+
+```python
+from pynndescent import PyNNDescentTransformer
+PaCMAP(neighbors_transformer=PyNNDescentTransformer(n_neighbors=61)).fit(X)
+```
+
+**How it works.**
+
+* A clone of the transformer is fitted on the *preprocessed* data, i.e.
+  after the 100-dim PCA projection and scaling.
+* It must return a sparse distance graph following the
+  `KNeighborsTransformer` convention. Self-loops are dropped, and rows are
+  sorted by (distance, index).
+* Only the NN candidates come from the graph. Mid-near pairs still use the
+  features, so the algorithm is unchanged.
+
+**Why not `metric="precomputed"` with a sparse graph, as `TSNE` does?** The
+MN rule needs distances from *i* to 6 uniformly random points, which a kNN
+graph doesn't contain. Supporting that would mean changing the MN rule.
+
+**Checks.**
+
+* `KNeighborsTransformer(n_neighbors=61)` reproduces the internal search
+  bitwise, for both estimators.
+* A graph with fewer than `n_neighbors + 51` neighbors per point warns. One
+  with fewer than `n_neighbors + 1` raises.
+* `test_neighbors_transformer.py` covers both of the above, plus graphs
+  without self-loops, unsorted rows and invalid graphs.
+
+**70k × 784 synthetic, seed 0** (`benchmarks/bench_ann.py`, 2 cores):
+
+| neighbors | fit [s] | kNN [s] | NN-pair recall vs exact | trust | 10-NN | triplet |
+|---|---|---|---|---|---|---|
+| exact (default) | 41.0 | 18.0 | 1.0000 | 0.9635 | 1.0000 | 0.7712 |
+| `KNeighborsTransformer` | 47.8 | 21.1 | 1.0000 | 0.9635 | 1.0000 | 0.7712 |
+| `PyNNDescentTransformer` | 37.9 | 16.9 | 1.0000 | 0.9635 | 1.0000 | 0.7712 |
+| faiss HNSW, M=32 (gallery-style wrapper) | **29.2** | **8.2** | 0.9798 | 0.9634 | 1.0000 | 0.7706 |
+
+* **faiss HNSW** brings the port to the reference's 28.0 s, which uses the
+  same index, with no change in quality. The remaining ~21 s is the SVD
+  and the optimizer.
+* **pynndescent** is exact on this easy synthetic data and barely faster
+  at this n. That matches the gallery's own conclusion: approximate
+  search only pays off once its query-time gain exceeds the cost of
+  building the index.
+* **Variance in the exact search.** It took 18 s here and 40 s in the
+  earlier run. The earlier run had other load on the machine.
+
 ## Open questions to settle before proposing upstream
 
-1. **Sparse precomputed kNN graphs.** This is the sklearn idiom for plugging in
-   ANN search: `KNeighborsTransformer` → `metric="precomputed"`, which `TSNE`
-   supports. PaCMAP cannot consume a sparse kNN graph as-is, because the MN rule
-   needs distances from *i* to 6 uniformly random points, which a kNN graph
-   doesn't contain. Options:
-   * (a) dense precomputed only, the current state;
-   * (b) accept the kNN graph for NN pairs plus features for MN distances;
-   * (c) change the MN rule for graph input.
-
-   This is an algorithmic decision for the authors, not an engineering one.
-2. **Exact kNN cost.** Brute-force search on the 100-dim PCA projection is
-   O(n²·100). That is fine to ~10⁵ points and dominates beyond. Upstream
-   reviewers will compare against `TSNE`, which has the same exact-search
-   default.
+1. **ANN plug-in API.** `neighbors_transformer` (an estimator as a parameter)
+   is the chosen design. Reviewers may still ask for `TSNE`'s sparse
+   `metric="precomputed"` route. That would need a different MN rule for
+   graph-only input, an algorithmic decision for the authors.
+2. **Exact kNN cost.** The default brute-force search on the 100-dim PCA
+   projection is O(n²·100). It dominates beyond ~10⁵ points; there,
+   `neighbors_transformer` is the escape hatch.
 3. **Naming.** Options to settle:
    * `"angular"` vs sklearn's `"cosine"`; the distance differs,
      √(2 − 2cos) vs 1 − cos, and the difference matters for the scaled
