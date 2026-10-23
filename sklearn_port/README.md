@@ -347,6 +347,58 @@ graph doesn't contain. Supporting that would mean changing the MN rule.
 * **Variance in the exact search.** It took 18 s here and 40 s in the
   earlier run. The earlier run had other load on the machine.
 
+## Corner cases checked against t-SNE's bug history
+
+`TSNE` has had about 50 bug reports in scikit-learn over the years. Each one
+that could apply to PaCMAP was turned into a probe:
+
+* `benchmarks/probe_edge_cases.py` runs 53 edge-case inputs, each in its own
+  subprocess with a timeout, and reports crash / hang / NaN / non-determinism.
+* Every failure mode below has a regression test in
+  `tests/test_corner_cases.py`. Issue numbers refer to scikit-learn.
+
+| t-SNE failure (issue) | in the port before | now |
+|---|---|---|
+| Constant / identical data → NaN → crash (#28368, #32788) | finite, but numpy `RuntimeWarning`s leaked | collapsed embedding plus a clear `UserWarning`, no numpy noise. Follows the resolution proposed in #32789 |
+| `set_config(transform_output="pandas")` breaks the internal PCA (#25365) | **crashed** ("output array is read-only") | internal PCA / SVD / scaler forced to numpy; output is a DataFrame with `pacmap0, pacmap1` columns |
+| `init` array not validated (#7204) | **NaN `init` silently gave an all-NaN embedding** | `check_array` (finite, 2D, shape); warns on a constant column, which never moves |
+| Stale or NaN reported loss (#6507, #10593) | `loss_` was NaN with 0 iterations and lagged one step otherwise | `loss_` is the loss of the final embedding, always finite |
+| perplexity ≥ n silently accepted (#10805, #23471) | pair counts silently clamped | still clamped as in the reference, but now with a `UserWarning` stating requested vs used |
+| Overflow in the distance transform (#19471 class) | `d²` overflowed for precomputed distances ~1e200 | scaled distance computed as `(d/σᵢ)(d/σⱼ)`; scale-invariant, no warnings |
+| NaN / divergence surfacing late (#6665, #9026) | not observed | final finiteness check raises a clear "diverged, reduce learning_rate" error |
+| O(N²) memory (#7089, #18966) | Rashomon refinement built an (n, 50, dim) temporary, 800 MB at n = 10⁶ | computed in row chunks |
+| OpenMP silently off (#29665) | — | verified linked (`libgomp`) and used (3.6 s → 2.1 s on 1 → 2 threads) |
+| Ties / thread nondeterminism (#15821, #15082) | — | tied-distance data is bitwise identical across thread counts (test) |
+| `n_components=1` / large `n_components` (#4154, #9941) | fine | tested 1, 3, 10, 25 |
+| float32 internals, underflow (#4124, #19471) | fine (float64 throughout) | test: float32 and float64 input give identical output; inputs at 1e-30 / 1e30 scale give the same embedding |
+| Sparse, NaN, inf, zero-feature, 1-sample input | clean errors | unchanged |
+
+**Unbounded LocalMAP resampling.** The reference checks its 100-draw cutoff
+only after duplicate / NN rejections. A point with no other point within
+`low_dist_thres` therefore loops about n / n_NN times, and a resampling
+round costs O(n²).
+
+* A round on isolated points took 5.6 s at 20k and 37 s at 50k.
+* A 20k fit with `low_dist_thres=1e-3` took 149 s, against 9 s at the default.
+* Outliers and clusters of ≤ n_neighbors points trigger it, not only tiny
+  thresholds.
+
+The port now counts every draw:
+
+* a 50k round takes 0.7 s, and the 20k fit takes 16 s;
+* on normal data, the fraction of kept-old pairs and the median new-pair
+  distance still match the reference at thresholds 2, 5 and 10.
+
+**Not changed, by design.**
+
+* **Default kNN algorithm.** At 100k × 10, sklearn's `algorithm="auto"`
+  picks a kd-tree. On uniform data that takes 70 s vs 18 s brute force. On
+  data with intrinsic dimension 3 the tree wins, 4.7 s vs 18 s. `TSNE` has
+  the same default (#10044). Users can pass
+  `neighbors_transformer=KNeighborsTransformer(algorithm="brute", ...)`.
+* **Tiny negative precomputed distances.** These are rejected, as `TSNE`
+  does (#11376, #5772).
+
 ## Open questions to settle before proposing upstream
 
 1. **ANN plug-in API.** `neighbors_transformer` (an estimator as a parameter)

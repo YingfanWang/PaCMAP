@@ -248,10 +248,17 @@ def resample_fp_nearby(const float64_t[:, ::1] Y,
     * a draw is rejected if it is ``i`` itself, already chosen for ``i`` in
       this round, one of ``i``'s NN partners, or farther than
       ``low_dist_thres`` from ``y_i`` in the embedding;
-    * a per-slot draw counter is checked only after a duplicate / NN
-      rejection or an acceptance (not after a self or too-far rejection);
-      if it exceeds 100 at that point the slot keeps its previous partner
-      from ``old_fp``.
+    * after more than 100 draws for a slot, the slot keeps its previous
+      partner from ``old_fp``.
+
+    One deliberate deviation: the reference checks the draw counter only
+    after a duplicate / NN rejection or an acceptance, never after a self or
+    too-far rejection, so for a point with no other point within
+    ``low_dist_thres`` the loop runs until it happens to draw an NN partner
+    (~n / n_nn draws), and a resampling round costs O(n^2). Here every draw
+    counts, which bounds the round at 100 * n_samples * n_fp draws. Points
+    that do have nearby candidates are affected only if acceptance takes
+    more than 100 draws.
 
     Randomness comes from a per-(row, round) counter-based stream, so the
     result does not depend on ``n_threads``.
@@ -282,26 +289,27 @@ def resample_fp_nearby(const float64_t[:, ::1] Y,
             while reject:
                 j = _randint(&state, n_samples)
                 count = count + 1
-                if j == i:
-                    continue
-                check_count = True
-                t = 0
-                while t < k:
-                    if pairs[i * n_fp + t, 1] == j:
-                        break
-                    t = t + 1
-                if t == k:  # not a duplicate
-                    if not _contains(&neighbors[i, 0], n_nn, j):
+                if j != i:
+                    t = 0
+                    while t < k:
+                        if pairs[i * n_fp + t, 1] == j:
+                            break
+                        t = t + 1
+                    if t == k and not _contains(&neighbors[i, 0], n_nn, j):
                         d = 0.0
                         for c in range(dim):
                             diff = Y[i, c] - Y[j, c]
                             d = d + diff * diff
-                        if d > thres_sq:
-                            continue  # too far: no count check (as reference)
-                        reject = False
+                        if d <= thres_sq:
+                            reject = False
+                # Every draw counts toward the cutoff. The reference skips
+                # the check after self / too-far rejections, which makes the
+                # loop O(n / n_nn) draws for an isolated point and a whole
+                # resampling round O(n^2) (minutes at n = 50k).
                 if count > NEARBY_MAX_DRAWS:
                     j = -1
-                    reject = False            # -1 is kept as a sentinel during this row so later duplicate
+                    reject = False
+            # -1 is kept as a sentinel during this row so later duplicate
             # checks compare against it, exactly as the reference does.
             pairs[i * n_fp + k, 0] = i
             pairs[i * n_fp + k, 1] = j

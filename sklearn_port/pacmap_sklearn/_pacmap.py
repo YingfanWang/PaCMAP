@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_random_state
 from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
 from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
-from sklearn.utils.validation import check_non_negative, validate_data
+from sklearn.utils.validation import check_array, check_non_negative, validate_data
 
 from ._pacmap_utils import (
     build_incidence,
@@ -60,6 +60,7 @@ _LOCALMAP_RESAMPLE_EVERY = 10
 # Rashomon neighbor refinement (Sun et al., 2026): size m of the candidate
 # neighbor set that the k refined neighbors are chosen from.
 _N_RASHOMON_CANDIDATES = 50
+_RASHOMON_CHUNK = 65536  # rows per chunk when computing candidate distances
 
 
 def _phase_weights(itr, n_iter_phase1, n_iter_phase2):
@@ -133,6 +134,30 @@ _BASE_PARAMETER_CONSTRAINTS = {
 }
 
 
+def _finalize(Y, indptr, other, types, num_iters, n_threads, grad, node_loss,
+              estimator_name):
+    """Loss of the final embedding and a divergence check.
+
+    The loss is evaluated *after* the last update, with the weights of the
+    last iteration (or of iteration 0 if no iteration ran), so ``loss_`` is
+    never stale or NaN (cf. t-SNE's stale ``kl_divergence_``, scikit-learn
+    #6507, and NaN loss when ``max_iter`` was not a multiple of the check
+    interval, #10593).
+    """
+    if not np.all(np.isfinite(Y)):
+        raise ValueError(
+            f"{estimator_name} diverged: the embedding contains non-finite "
+            "values. Reduce learning_rate."
+        )
+    w_nn, w_mn, w_fp = _phase_weights(
+        max(sum(num_iters) - 1, 0), num_iters[0], num_iters[1]
+    )
+    pacmap_gradient(
+        Y, indptr, other, types, w_nn, w_mn, w_fp, grad, node_loss, n_threads
+    )
+    return 0.5 * float(node_loss.sum())
+
+
 class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
     """Shared machinery of PaCMAP and LocalMAP. Subclasses define
     ``__init__`` and ``_optimize``."""
@@ -166,6 +191,7 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
             n_nn = self.n_neighbors
         n_mn = int(round(n_nn * self.mn_ratio))
         n_fp = int(round(n_nn * self.fp_ratio))
+        requested = (n_nn, n_mn, n_fp)
 
         n_nn = min(n_nn, n_samples - 1)
         n_fp = min(n_fp, n_samples - 1 - n_nn)
@@ -187,6 +213,15 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
                 f"fp_ratio={self.fp_ratio}. Increase fp_ratio or the number "
                 "of samples."
             )
+        if (n_nn, n_mn, n_fp) != requested:
+            # Silent clamping hid misconfiguration in t-SNE (perplexity >=
+            # n_samples, scikit-learn #10805 / #23471); say what changed.
+            warnings.warn(
+                f"n_samples={n_samples} is too small for the requested pairs "
+                f"per point (NN, MN, FP) = {requested}; using "
+                f"{(n_nn, n_mn, n_fp)} instead.",
+                UserWarning,
+            )
         return n_nn, n_mn, n_fp
 
     # ------------------------------------------------------------------ #
@@ -203,9 +238,12 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
             and self.apply_pca
         ):
             X = X - X.mean(axis=0)
-            X = TruncatedSVD(
-                n_components=_PCA_DIM, random_state=random_state
-            ).fit_transform(X)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                X = (
+                    TruncatedSVD(n_components=_PCA_DIM, random_state=random_state)
+                    .set_output(transform="default")
+                    .fit_transform(X)
+                )
             pca_init = X[:, : self.n_components] if want_pca_init else None
         else:
             X = X.copy()
@@ -217,9 +255,21 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
             pca_init = None
             if want_pca_init:
                 k = min(self.n_components, n_samples, n_features)
-                pca_init = PCA(
-                    n_components=k, random_state=random_state
-                ).fit_transform(X)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    pca_init = (
+                        PCA(n_components=k, random_state=random_state)
+                        .set_output(transform="default")
+                        .fit_transform(X)
+                    )
+        if not np.any(X):
+            # All samples identical (after preprocessing). t-SNE produced NaN
+            # and crashed here (scikit-learn #28368 / #32788); the consensus
+            # there was to return the collapsed embedding with a warning.
+            warnings.warn(
+                "All samples are identical after preprocessing; the embedding "
+                "will be degenerate (all points at the same location).",
+                UserWarning,
+            )
         if pca_init is not None and pca_init.shape[1] < self.n_components:
             # Fewer informative directions than output dimensions: pad with
             # small noise so the extra coordinates are not stuck at zero.
@@ -305,7 +355,8 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
         # sigma_i: mean distance to the 4th-6th neighbors.
         lo, hi = min(3, n_search - 1), min(6, n_search)
         sigma = np.maximum(dist[:, lo:hi].mean(axis=1), 1e-10)
-        scaled = dist**2 / sigma[:, None] / sigma[idx]
+        # (d / s_i) * (d / s_j) == d**2 / (s_i s_j) without overflowing d**2.
+        scaled = (dist / sigma[:, None]) * (dist / sigma[idx])
         order = np.argsort(scaled, axis=1, kind="stable")[:, :n_nn]
         return np.ascontiguousarray(
             np.take_along_axis(idx, order, axis=1), dtype=np.intp
@@ -323,13 +374,24 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
 
     def _initial_embedding(self, n_samples, pca_init, random_state):
         if isinstance(self.init, np.ndarray):
-            init = np.asarray(self.init, dtype=np.float64)
+            init = check_array(
+                self.init, dtype=np.float64, ensure_min_samples=1,
+                input_name="init",
+            )
             if init.shape != (n_samples, self.n_components):
                 raise ValueError(
                     "init must have shape (n_samples, n_components) = "
                     f"{(n_samples, self.n_components)}, got {init.shape}."
                 )
-            return 1e-4 * StandardScaler().fit_transform(init)
+            if np.any(init.std(axis=0) == 0):
+                warnings.warn(
+                    "init has a constant column; that embedding coordinate "
+                    "receives zero gradient and stays constant.",
+                    UserWarning,
+                )
+            return 1e-4 * (
+                StandardScaler().set_output(transform="default").fit_transform(init)
+            )
         if self.init == "random":
             return 1e-4 * random_state.standard_normal(
                 (n_samples, self.n_components)
@@ -396,7 +458,12 @@ class _BasePaCMAP(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimat
                 X_search, pca_init, default_neighbors, n_mn, n_fp, num_iters,
                 np.random.RandomState(seed), n_threads,
             )
-            d = np.linalg.norm(Y_t[:, None, :] - Y_t[candidates], axis=2)
+            d = np.empty((n_samples, n_cand))
+            for lo in range(0, n_samples, _RASHOMON_CHUNK):
+                hi = min(lo + _RASHOMON_CHUNK, n_samples)
+                d[lo:hi] = np.linalg.norm(
+                    Y_t[lo:hi, None, :] - Y_t[candidates[lo:hi]], axis=2
+                )
             s1 += d
             s2 += d * d
             np.maximum(d_max, d, out=d_max)
@@ -623,7 +690,8 @@ _ATTRIBUTES_DOC = """
         The embedding.
 
     loss_ : float
-        Loss at the start of the last iteration.
+        Loss of the final embedding, with the pair weights of the last
+        iteration (the reported PaCMAP loss for LocalMAP as well).
 
     n_iter_ : int
         Total number of iterations run.
@@ -774,6 +842,8 @@ class PaCMAP(_BasePaCMAP):
             adam.update(Y, grad, itr)
             if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
                 print(f"[PaCMAP] Iteration {itr + 1}: loss = {loss:.6f}")
+        loss = _finalize(Y, indptr, other, types, num_iters, n_threads, grad,
+                         node_loss, "PaCMAP")
         return Y, loss, n_iter, pair_fp
 
 
@@ -914,4 +984,6 @@ class LocalMAP(_BasePaCMAP):
                 )
             if self.verbose and (itr == 0 or (itr + 1) % 10 == 0):
                 print(f"[LocalMAP] Iteration {itr + 1}: loss = {loss:.6f}")
+        loss = _finalize(Y, indptr, other, inc_types, num_iters, n_threads,
+                         grad, node_loss, "LocalMAP")
         return Y, loss, n_iter, pair_fp
