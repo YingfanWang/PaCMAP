@@ -1,5 +1,10 @@
 # Release Notes
 
+- Unreleased
+
+  Fix loading saved Voyager-backed PaCMAP and LocalMAP estimators on Windows
+  by using Voyager's binary file-object reader.
+
 - 0.9.0
 
   Add `Voyager` and `FAISS` backend within the package ([136](https://github.com/YingfanWang/PaCMAP/issues/136) and [94](https://github.com/YingfanWang/PaCMAP/issues/94)) based on the pull request from @Tyrannas in https://github.com/YingfanWang/PaCMAP/pull/137.
