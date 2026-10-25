@@ -1,5 +1,10 @@
 # Release Notes
 
+- Unreleased
+
+  Fix intermediate snapshot selection in PaCMAP and LocalMAP, including longer
+  runs and query-only transform histories. Validate requested steps before allocation.
+
 - 0.9.0
 
   Add `Voyager` and `FAISS` backend within the package ([136](https://github.com/YingfanWang/PaCMAP/issues/136) and [94](https://github.com/YingfanWang/PaCMAP/issues/94)) based on the pull request from @Tyrannas in https://github.com/YingfanWang/PaCMAP/pull/137.

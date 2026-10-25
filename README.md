@@ -156,7 +156,8 @@ Other parameters include:
 - `verbose`: print the progress of pacmap. Default to `False`
 - `lr`: learning rate of the AdaGrad optimizer. Default to 1.
 - `apply_pca`: whether pacmap should apply PCA to the data before constructing the k-Nearest Neighbor graph. Using PCA to preprocess the data can largely accelerate the DR process without losing too much accuracy. Notice that this option does not affect the initialization of the optimization process.
-- `intermediate`: whether pacmap should also output the intermediate stages of the optimization process of the lower dimension embedding. If `True`, then the output will be a numpy array of the size (n, `n_components`, 13), where each slice is a "screenshot" of the output embedding at a particular number of steps, from [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
+- `intermediate`: whether to return intermediate embeddings. If `True`, the output shape is (`n_snapshots`, `n_points`, `n_components`). For `transform`, `n_points` is the number of new points, excluding the fitted basis. Default snapshot steps are [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450].
+- `intermediate_snapshots`: a nonempty, strictly increasing sequence of integer steps between 0 and the total number of optimization iterations. Step 0 captures initialization. Choose steps within your iteration budget for shorter runs; optimization can continue beyond the final requested snapshot.
 - `nn_backend`: the backend used to construct the k-Nearest Neighbor graph. One of `"annoy"`, `"faiss"`, or `"voyager"`. Default to `"faiss"`. **Note:** The original paper used Annoy, but FAISS is now the default since Annoy is no longer actively maintained.
 - `low_dist_thres`[Only Used in `LocalMAP`]: The Proximal Cluster Distance Commons, the acceptance distance threshold for selecting local FP with distance no larger than the average low-dimension distance among all nearest clusters pair. Default to 10.
 
