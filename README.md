@@ -160,6 +160,19 @@ Other parameters include:
 - `nn_backend`: the backend used to construct the k-Nearest Neighbor graph. One of `"annoy"`, `"faiss"`, or `"voyager"`. Default to `"faiss"`. **Note:** The original paper used Annoy, but FAISS is now the default since Annoy is no longer actively maintained.
 - `low_dist_thres`[Only Used in `LocalMAP`]: The Proximal Cluster Distance Commons, the acceptance distance threshold for selecting local FP with distance no larger than the average low-dimension distance among all nearest clusters pair. Default to 10.
 
+### Limiting Numba workers
+
+Use `pacmap.PaCMAP(numba_threads=2)` (or `pacmap.LocalMAP`) to limit the
+Numba workers used for pair sampling and embedding optimization in `fit`,
+`fit_transform`, and `transform`. The default `None` preserves your current
+Numba setting. After each call, the previous setting is restored, even if
+fitting or projection raises an error.
+
+The value must be a positive integer no larger than the Numba worker pool,
+which is configured by `NUMBA_NUM_THREADS` before import. This option only
+controls Numba: nearest-neighbor backends and BLAS/PCA have separate thread
+settings. It does not change their behavior or increase the configured pool.
+
 ## <a name='Methods'></a>Methods
 
 Similar to the scikit-learn API, the PaCMAP instance can generate embedding for a dataset via `fit`, `fit_transform` and `transform` method. We currently support numpy.ndarray format as our input. Specifically, to convert pandas DataFrame to ndarray format, please refer to the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html). For a more detailed walkthrough, please see the [demo](./demo/) directory.

@@ -1,3 +1,5 @@
+from functools import wraps
+from numbers import Integral
 import datetime
 import logging
 import math
@@ -343,6 +345,25 @@ def pacmap_grad_fit(Y, pair_XP, w_neighbors):
 
     grad[-1, 0] = loss.sum()
     return grad
+
+
+def _limit_numba_threads(method):
+    """Temporarily mask Numba workers in the calling thread, including on errors."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        threads = getattr(self, "numba_threads", None)
+        if threads is None:
+            return method(self, *args, **kwargs)
+        if isinstance(threads, bool) or not isinstance(threads, Integral) or threads < 1:
+            raise ValueError("numba_threads must be a positive integer or None.")
+        previous = numba.get_num_threads()
+        # Numba validates the upper bound against its configured worker pool.
+        numba.set_num_threads(int(threads))
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            numba.set_num_threads(previous)
+    return wrapped
 
 
 def find_weight(w_MN_init, itr, *, num_iters):
@@ -1104,6 +1125,13 @@ class PaCMAP(BaseEstimator):
     knn_backend: str, default="faiss"
         The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
         'faiss' is the default and generally faster. 'annoy' and 'voyager' are also available.
+
+    numba_threads: int or None, default=None
+        Number of Numba workers used during fitting, pair sampling and transform.
+        None preserves the calling thread's current Numba setting. A positive
+        integer must not exceed the pool configured by NUMBA_NUM_THREADS.
+        The previous setting is restored after each call, including on errors.
+        This does not control nearest-neighbor backends or BLAS/PCA workers.
     '''
 
     def __init__(self,
@@ -1124,7 +1152,8 @@ class PaCMAP(BaseEstimator):
                      0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450],
                  random_state=None,
                  save_tree=False,
-                 knn_backend="faiss"
+                 knn_backend="faiss",
+                 numba_threads=None
                  ):
         self.n_components = n_components
         self.n_neighbors = n_neighbors
@@ -1142,6 +1171,7 @@ class PaCMAP(BaseEstimator):
         self.save_tree = save_tree
         self.intermediate_snapshots = intermediate_snapshots
         self.knn_backend = knn_backend
+        self.numba_threads = numba_threads
 
         global _RANDOM_STATE
         if random_state is not None:
@@ -1230,6 +1260,7 @@ class PaCMAP(BaseEstimator):
             else:
                 raise ValueError(msg)
 
+    @_limit_numba_threads
     def fit(self, X, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
 
@@ -1324,6 +1355,7 @@ class PaCMAP(BaseEstimator):
         else:
             return self.embedding_
 
+    @_limit_numba_threads
     def transform(self, X, basis=None, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into existing embedding space and return the embedding.
         Warning: In the current version of implementation, the `transform` method will treat the input as an
@@ -1386,6 +1418,7 @@ class PaCMAP(BaseEstimator):
         else:
             return Y[self.embedding_.shape[0]:, :]
 
+    @_limit_numba_threads
     def sample_pairs(self, X, save_tree):
         '''
         Sample PaCMAP pairs from the dataset.
@@ -1704,6 +1737,13 @@ class LocalMAP(PaCMAP):
     knn_backend: str, default="faiss"
         The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
         'faiss' is the default and generally faster. 'annoy' and 'voyager' are also available.
+
+    numba_threads: int or None, default=None
+        Number of Numba workers used during fitting, pair sampling and transform.
+        None preserves the calling thread's current Numba setting. A positive
+        integer must not exceed the pool configured by NUMBA_NUM_THREADS.
+        The previous setting is restored after each call, including on errors.
+        This does not control nearest-neighbor backends or BLAS/PCA workers.
     '''
     def __init__(self,
                     n_components=2,
@@ -1724,13 +1764,15 @@ class LocalMAP(PaCMAP):
                     random_state=None,
                     save_tree=False,
                     low_dist_thres=10,
-                    knn_backend="faiss"
+                    knn_backend="faiss",
+                    numba_threads=None
                     ):
             super().__init__(n_components, n_neighbors, MN_ratio, FP_ratio, pair_neighbors, pair_MN, pair_FP,
                             distance, lr, num_iters, verbose, apply_pca, intermediate, intermediate_snapshots, 
-                            random_state, save_tree, knn_backend)
+                            random_state, save_tree, knn_backend, numba_threads)
             self.low_dist_thres = low_dist_thres
             
+    @_limit_numba_threads
     def fit(self, X, init=None, save_pairs=True):
         '''Projects a high dimensional dataset into a low-dimensional embedding, without returning the output.
 

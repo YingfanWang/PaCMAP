@@ -1,5 +1,11 @@
 # Release Notes
 
+- Unreleased
+
+  Add `numba_threads` to PaCMAP and LocalMAP for temporarily limiting Numba
+  workers during fitting and projection (related to #126). The previous mask
+  is restored on return or error; nearest-neighbor and BLAS settings are unchanged.
+
 - 0.9.0
 
   Add `Voyager` and `FAISS` backend within the package ([136](https://github.com/YingfanWang/PaCMAP/issues/136) and [94](https://github.com/YingfanWang/PaCMAP/issues/94)) based on the pull request from @Tyrannas in https://github.com/YingfanWang/PaCMAP/pull/137.
