@@ -9,6 +9,11 @@
   workers during fitting and projection (#143, related to #126, thanks @AHMETHAKANBEZIR1).
   The previous mask is restored on return or error; nearest-neighbor and BLAS settings are unchanged.
 
+  Fix intermediate snapshot selection in PaCMAP and LocalMAP, including longer
+  runs and query-only transform histories (#145, thanks @AHMETHAKANBEZIR1).
+  Requested snapshot steps are now validated before allocation: empty, non-integer,
+  unordered or out-of-range steps raise `ValueError`.
+
 - 0.9.0
 
   Add `Voyager` and `FAISS` backend within the package ([136](https://github.com/YingfanWang/PaCMAP/issues/136) and [94](https://github.com/YingfanWang/PaCMAP/issues/94)) based on the pull request from @Tyrannas in https://github.com/YingfanWang/PaCMAP/pull/137.

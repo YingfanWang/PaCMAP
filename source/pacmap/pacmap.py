@@ -366,6 +366,19 @@ def _limit_numba_threads(method):
     return wrapped
 
 
+def _validate_intermediate_snapshots(snapshots, num_iters_total):
+    """Require ordered integer steps so every allocated snapshot is recorded."""
+    snapshots = np.asarray(snapshots)
+    if (snapshots.ndim != 1 or snapshots.size == 0
+            or snapshots.dtype.kind not in "iu"):
+        raise ValueError("intermediate_snapshots must be a nonempty sequence of integer steps.")
+    if (snapshots[0] < 0 or snapshots[-1] > num_iters_total
+            or np.any(snapshots[1:] <= snapshots[:-1])):
+        raise ValueError("intermediate_snapshots must be strictly increasing steps "
+                         "between 0 and the total number of iterations.")
+    return snapshots
+
+
 def find_weight(w_MN_init, itr, *, num_iters):
     '''Find the corresponding weight given the index of an iteration'''
     (phase_1_iters, phase_2_iters, _) = num_iters
@@ -800,7 +813,10 @@ def pacmap(
     start_time = time.time()
     n, _ = X.shape
 
+    num_iters_total = sum(num_iters)
     if intermediate:
+        inter_snapshots = _validate_intermediate_snapshots(inter_snapshots, num_iters_total)
+        itr_ind = 0
         intermediate_states = np.empty(
             (len(inter_snapshots), n, n_dims), dtype=np.float32)
     else:
@@ -840,8 +856,6 @@ def pacmap(
     print_verbose(
         (pair_neighbors.shape, pair_MN.shape, pair_FP.shape), verbose)
 
-    num_iters_total = sum(num_iters)
-
     for itr in range(num_iters_total):
         w_MN, w_neighbors, w_FP = find_weight(w_MN_init, itr, num_iters=num_iters)
 
@@ -852,7 +866,7 @@ def pacmap(
             print(f"Initial Loss: {C}")
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
-        if intermediate:
+        if intermediate and itr_ind < len(inter_snapshots):
             if (itr + 1) == inter_snapshots[itr_ind]:
                 intermediate_states[itr_ind, :, :] = Y
                 itr_ind += 1
@@ -884,7 +898,10 @@ def pacmap_fit(
     start_time = time.time()
     n, high_dim = X.shape
 
+    num_iters_total = sum(num_iters)
     if intermediate:
+        inter_snapshots = _validate_intermediate_snapshots(inter_snapshots, num_iters_total)
+        itr_ind = 0
         intermediate_states = np.empty(
             (len(inter_snapshots), n, n_dims), dtype=np.float32)
     else:
@@ -919,11 +936,9 @@ def pacmap_fit(
 
     if intermediate and inter_snapshots[0] == 0:
         itr_ind = 1  # move counter to one step
-        intermediate_states[0, :, :] = Y
+        intermediate_states[0, :, :] = Y[embedding.shape[0]:]
 
     print_verbose(pair_XP.shape, verbose)
-
-    num_iters_total = sum(num_iters)
 
     for itr in range(num_iters_total):
         _, w_neighbors, _ = find_weight(0, itr, num_iters=num_iters)
@@ -934,12 +949,10 @@ def pacmap_fit(
             print(f"Initial Loss: {C}")
         update_embedding_adam(Y, grad, m, v, beta1, beta2, lr, itr)
 
-        if intermediate:
+        if intermediate and itr_ind < len(inter_snapshots):
             if (itr+1) == inter_snapshots[itr_ind]:
-                intermediate_states[itr_ind, :, :] = Y
+                intermediate_states[itr_ind, :, :] = Y[embedding.shape[0]:]
                 itr_ind += 1
-                if itr_ind > 12:
-                    itr_ind -= 1
         if (itr + 1) % 10 == 0:
             print_verbose("Iteration: %4d, Loss: %f" % (itr + 1, C), verbose)
 
@@ -1118,6 +1131,8 @@ class PaCMAP(BaseEstimator):
     intermediate_snapshots: list[int], optional
         The index of step where an intermediate snapshot of the embedding is taken.
         If intermediate sets to True, the default value will be [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
+        Steps must be nonempty, strictly increasing integers between 0 and the
+        total number of iterations. For shorter runs, provide steps in that range.
 
     random_state: int, optional
         Random state for the pacmap instance.
@@ -1596,7 +1611,10 @@ def localmap(
     start_time = time.time()
     n, _ = X.shape
 
+    num_iters_total = sum(num_iters)
     if intermediate:
+        inter_snapshots = _validate_intermediate_snapshots(inter_snapshots, num_iters_total)
+        itr_ind = 0
         intermediate_states = np.empty(
             (len(inter_snapshots), n, n_dims), dtype=np.float32)
     else:
@@ -1636,8 +1654,6 @@ def localmap(
     print_verbose(
         (pair_neighbors.shape, pair_MN.shape, pair_FP.shape), verbose)
 
-    num_iters_total = sum(num_iters)
-
     for itr in range(num_iters_total):
         w_MN, w_neighbors, w_FP = find_weight(w_MN_init, itr, num_iters=num_iters)
 
@@ -1655,7 +1671,7 @@ def localmap(
         if (itr > num_iters[0] + num_iters[1]) and (itr % 10 == 0):
             pair_FP = sample_FP_pair_nearby(X, pair_neighbors, pair_FP, Y, low_dist_thres)
 
-        if intermediate:
+        if intermediate and itr_ind < len(inter_snapshots):
             if (itr + 1) == inter_snapshots[itr_ind]:
                 intermediate_states[itr_ind, :, :] = Y
                 itr_ind += 1
@@ -1725,6 +1741,8 @@ class LocalMAP(PaCMAP):
     intermediate_snapshots: list[int], optional
         The index of step where an intermediate snapshot of the embedding is taken.
         If intermediate sets to True, the default value will be [0, 10, 30, 60, 100, 120, 140, 170, 200, 250, 300, 350, 450]
+        Steps must be nonempty, strictly increasing integers between 0 and the
+        total number of iterations. For shorter runs, provide steps in that range.
 
     random_state: int, optional
         Random state for the pacmap instance.
