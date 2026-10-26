@@ -27,8 +27,8 @@ numpy==2.3.5
     # via pacmap and various dependencies
 packaging==26.0
     # via faiss-cpu, matplotlib, pytest
-pandas>=1.0
-    # via testing openml datasets
+pandas==3.0.0
+    # Match uv.lock: sklearn 1.8 OpenML nominal parsing fails with pandas 3.1.
 pillow==12.1.0
     # via matplotlib
 pluggy==1.6.0
