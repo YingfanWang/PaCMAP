@@ -986,7 +986,12 @@ def attach_index(reducer, index_path: str):
         reducer.tree = faiss.read_index(index_path)
     elif backend == 'voyager':
         if voyager is None: raise ImportError("Cannot load Voyager index: voyager module not found.")
-        reducer.tree = voyager.Index.load(index_path)
+        if os.name == "nt":
+            # Voyager's native path reader can fail on valid Windows index files.
+            with open(index_path, "rb") as fp:
+                reducer.tree = voyager.Index.load(fp)
+        else:
+            reducer.tree = voyager.Index.load(index_path)
     else:
         raise ValueError(f"Unknown knn_backend: {backend}")
         
