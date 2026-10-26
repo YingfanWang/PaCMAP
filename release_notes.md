@@ -3,7 +3,11 @@
 - Unreleased
 
   Fix loading saved Voyager-backed PaCMAP and LocalMAP estimators on Windows
-  by using Voyager's binary file-object reader.
+  by using Voyager's binary file-object reader (#144, thanks @AHMETHAKANBEZIR1).
+
+  Add `numba_threads` to PaCMAP and LocalMAP for temporarily limiting Numba
+  workers during fitting and projection (#143, related to #126, thanks @AHMETHAKANBEZIR1).
+  The previous mask is restored on return or error; nearest-neighbor and BLAS settings are unchanged.
 
 - 0.9.0
 
