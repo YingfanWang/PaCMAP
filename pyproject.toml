@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pacmap"
-version = "0.9.1"
+version = "0.10.0"
 description = "The official implementation for PaCMAP: Pairwise Controlled Manifold Approximation Projection"
 readme = "README.md"
 license = {text = "Apache-2.0"}
