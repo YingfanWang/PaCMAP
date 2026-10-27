@@ -1,6 +1,6 @@
 # Release Notes
 
-- Unreleased
+- 0.10.0
 
   Fix loading saved Voyager-backed PaCMAP and LocalMAP estimators on Windows
   by using Voyager's binary file-object reader (#144, thanks @AHMETHAKANBEZIR1).
