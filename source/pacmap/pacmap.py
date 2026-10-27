@@ -592,6 +592,9 @@ def generate_extra_pair_basis(basis,
         
     elif is_voyager or knn_backend == 'voyager':
         I, D = tree.query(X, k=n_neighbors_extra)
+        # Cosine roundoff can make a duplicate's distance slightly negative.
+        if distance == "angular":
+            D = np.maximum(D, 0.0)
         nbrs = I.astype(np.int32)
         # Voyager returns squared distances for Euclidean
         knn_distances = np.sqrt(D).astype(np.float32)
@@ -693,6 +696,9 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
         
         # Query
         I, D = index.query(X, k=k)
+        # Cosine roundoff can make a duplicate's distance slightly negative.
+        if distance == "angular":
+            D = np.maximum(D, 0.0)
         
         # Exclude self
         nbrs = I[:, 1:].astype(np.int32)
