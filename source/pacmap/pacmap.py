@@ -603,10 +603,30 @@ def generate_extra_pair_basis(basis,
     return pair_neighbors
 
 
+@numba.njit(cache=True)
+def _exclude_self_neighbors(indices, distances, n_neighbors):
+    """Keep the first non-self neighbors and their aligned distances."""
+    n = indices.shape[0]
+    neighbors = np.empty((n, n_neighbors), dtype=np.int32)
+    neighbor_distances = np.empty((n, n_neighbors), dtype=np.float32)
+    for i in range(n):
+        count = 0
+        for j in range(indices.shape[1]):
+            if count == n_neighbors:
+                break
+            if indices[i, j] != i:
+                neighbors[i, count] = indices[i, j]
+                neighbor_distances[i, count] = distances[i, j]
+                count += 1
+        if count != n_neighbors:
+            raise ValueError("Not enough non-self nearest neighbors were returned.")
+    return neighbors, neighbor_distances
+
+
 def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_state):
     '''Helper function to compute nearest neighbors.'''
     n, dim = X.shape
-    # sample more neighbors than needed because the first one is the point itself
+    # Fetch one spare neighbor, then exclude the query by identity rather than rank.
     k = n_neighbors + 1
 
     tree = None
@@ -623,13 +643,13 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
             tree.add_item(i, X[i, :])
         tree.build(20)
 
-        nbrs = np.zeros((n, n_neighbors), dtype=np.int32)
-        knn_distances = np.empty((n, n_neighbors), dtype=np.float32)
+        nbrs = np.zeros((n, k), dtype=np.int32)
+        knn_distances = np.empty((n, k), dtype=np.float32)
 
         for i in range(n):
             nbrs_ = tree.get_nns_by_item(i, k)
-            nbrs[i, :] = nbrs_[1:]
-            for j in range(n_neighbors):
+            nbrs[i, :] = nbrs_
+            for j in range(k):
                 knn_distances[i, j] = tree.get_distance(i, nbrs[i, j])
     
     elif knn_backend == 'faiss':
@@ -645,8 +665,8 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
             index.add(X)
             tree = index
             D, I = index.search(X, k)
-            nbrs = I[:, 1:].astype(np.int32)
-            knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+            nbrs = I
+            knn_distances = np.sqrt(D).astype(np.float32)
             
         elif distance == 'angular':
             index = faiss.IndexHNSWFlat(dim, 32, faiss.METRIC_INNER_PRODUCT)
@@ -656,8 +676,8 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
             tree = index
             
             D, I = index.search(X_norm, k)
-            nbrs = I[:, 1:].astype(np.int32)
-            D = np.minimum(D[:, 1:], 1.0)
+            nbrs = I
+            D = np.minimum(D, 1.0)
             knn_distances = np.sqrt(2 * (1 - D)).astype(np.float32)
             
         elif distance == 'manhattan':
@@ -666,8 +686,8 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
             tree = index
             
             D, I = index.search(X, k)
-            nbrs = I[:, 1:].astype(np.int32)
-            knn_distances = D[:, 1:].astype(np.float32)
+            nbrs = I
+            knn_distances = D.astype(np.float32)
 
         else:
             raise NotImplementedError(f"Faiss backend does not support {distance} metric in this implementation.")
@@ -694,13 +714,16 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
         # Query
         I, D = index.query(X, k=k)
         
-        # Exclude self
-        nbrs = I[:, 1:].astype(np.int32)
-        knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+        # Keep tied results until identity-based exclusion below.
+        nbrs = I
+        knn_distances = D.astype(np.float32)
 
     else:
         raise ValueError(f"Unknown knn_backend: {knn_backend}")
 
+    nbrs, knn_distances = _exclude_self_neighbors(nbrs, knn_distances, n_neighbors)
+    if knn_backend == 'voyager':
+        knn_distances = np.sqrt(knn_distances).astype(np.float32)
     return tree, nbrs, knn_distances
 
 
