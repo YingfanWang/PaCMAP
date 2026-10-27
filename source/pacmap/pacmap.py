@@ -29,9 +29,6 @@ try:
 except ImportError:
     voyager = None
 
-global _RANDOM_STATE
-_RANDOM_STATE = None
-
 logger = logging.getLogger(__name__)
 
 
@@ -530,7 +527,8 @@ def generate_extra_pair_basis(basis,
                               tree,
                               distance='euclidean',
                               verbose=True,
-                              knn_backend='faiss'
+                              knn_backend='faiss',
+                              random_state=None
                               ):
     '''Generate pairs that connects the extra set of data to the fitted basis.
     '''
@@ -547,8 +545,8 @@ def generate_extra_pair_basis(basis,
             if AnnoyIndex is None:
                 raise ImportError("knn_backend='annoy' requested, but annoy is not installed.")
             tree = AnnoyIndex(dim, metric=distance)
-            if _RANDOM_STATE is not None:
-                tree.set_seed(_RANDOM_STATE)
+            if random_state is not None:
+                tree.set_seed(random_state)
             for i in range(n):
                 tree.add_item(i, basis[i, :])
             tree.build(20)
@@ -557,7 +555,7 @@ def generate_extra_pair_basis(basis,
             if faiss is None:
                 raise ImportError("faiss is not installed.")
             
-            if _RANDOM_STATE is not None:
+            if random_state is not None:
                 faiss.omp_set_num_threads(1)
             if distance == "euclidean":
                 # For Faiss, we typically use HNSW for approx search
@@ -575,7 +573,7 @@ def generate_extra_pair_basis(basis,
                 raise NotImplementedError(f"Faiss backend does not support {distance} metric in this implementation.")
 
         elif knn_backend == 'voyager':
-            if _RANDOM_STATE is not None:
+            if random_state is not None:
                 logger.warning("Using Voyager with random state: Current implementation may not be fully deterministic.")
             if voyager is None:
                 raise ImportError("voyager is not installed.")
@@ -585,8 +583,8 @@ def generate_extra_pair_basis(basis,
                 metric = voyager.Space.Cosine
             else:
                  raise NotImplementedError(f"Voyager backend does not support {distance} metric in this implementation.")
-            tree = voyager.Index(metric, num_dimensions=dim, random_seed=_RANDOM_STATE if _RANDOM_STATE is not None else 1)
-            if _RANDOM_STATE is not None:
+            tree = voyager.Index(metric, num_dimensions=dim, random_seed=random_state if random_state is not None else 1)
+            if random_state is not None:
                 tree.add_items(basis,num_threads=1)
             else:
                 tree.add_items(basis)
@@ -786,7 +784,8 @@ def generate_pair(
         n_FP,
         distance='euclidean',
         verbose=True,
-        knn_backend='faiss'
+        knn_backend='faiss',
+        random_state=None
 ):
     '''Generate pairs for the dataset.
     '''
@@ -828,7 +827,7 @@ def generate_pair(
             X, n_neighbors_extra)
     else:
         tree, nbrs, knn_distances = compute_nearest_neighbors(
-            X, n_neighbors_extra, distance, knn_backend, _RANDOM_STATE
+            X, n_neighbors_extra, distance, knn_backend, random_state
         )
 
     print_verbose("Found nearest neighbor", verbose)
@@ -841,25 +840,25 @@ def generate_pair(
     if distance == 'precomputed':
         # Mid-near pairs are chosen by looking up entries of the distance
         # matrix directly rather than recomputing distances from features.
-        if _RANDOM_STATE is None:
+        if random_state is None:
             pair_MN = sample_MN_pair_precomputed(X, n_MN)
         else:
             pair_MN = sample_MN_pair_deterministic_precomputed(
-                X, n_MN, _RANDOM_STATE)
+                X, n_MN, random_state)
     else:
         option = distance_to_option(distance=distance)
-        if _RANDOM_STATE is None:
+        if random_state is None:
             pair_MN = sample_MN_pair(X, n_MN, option)
         else:
-            pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
+            pair_MN = sample_MN_pair_deterministic(X, n_MN, random_state, option)
 
     # Further pairs are sampled uniformly at random and only rely on indices,
     # so the same routine works for both feature and precomputed inputs.
-    if _RANDOM_STATE is None:
+    if random_state is None:
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
         pair_FP = sample_FP_pair_deterministic(
-            X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
+            X, pair_neighbors, n_neighbors, n_FP, random_state)
     return pair_neighbors, pair_MN, pair_FP, tree
 
 
@@ -870,29 +869,30 @@ def generate_pair_no_neighbors(
         n_FP,
         pair_neighbors,
         distance='euclidean',
-        verbose=True
+        verbose=True,
+        random_state=None
 ):
     '''Generate mid-near pairs and further pairs for a given dataset.
     This function is useful when the nearest neighbors comes from a given set.
     '''
     if distance == 'precomputed':
-        if _RANDOM_STATE is None:
+        if random_state is None:
             pair_MN = sample_MN_pair_precomputed(X, n_MN)
         else:
             pair_MN = sample_MN_pair_deterministic_precomputed(
-                X, n_MN, _RANDOM_STATE)
+                X, n_MN, random_state)
     else:
         option = distance_to_option(distance=distance)
-        if _RANDOM_STATE is None:
+        if random_state is None:
             pair_MN = sample_MN_pair(X, n_MN, option)
         else:
-            pair_MN = sample_MN_pair_deterministic(X, n_MN, _RANDOM_STATE, option)
+            pair_MN = sample_MN_pair_deterministic(X, n_MN, random_state, option)
 
-    if _RANDOM_STATE is None:
+    if random_state is None:
         pair_FP = sample_FP_pair(X, pair_neighbors, n_neighbors, n_FP)
     else:
         pair_FP = sample_FP_pair_deterministic(
-            X, pair_neighbors, n_neighbors, n_FP, _RANDOM_STATE)
+            X, pair_neighbors, n_neighbors, n_FP, random_state)
     return pair_neighbors, pair_MN, pair_FP
 
 
@@ -909,7 +909,8 @@ def pacmap(
         intermediate,
         inter_snapshots,
         pca_solution,
-        tsvd=None
+        tsvd=None,
+        random_state=None
 ):
     start_time = time.time()
     n, _ = X.shape
@@ -934,9 +935,8 @@ def pacmap(
         else:
             Y = 0.01 * tsvd.transform(X).astype(np.float32)
     elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
-        if _RANDOM_STATE is not None:
-            np.random.seed(_RANDOM_STATE)
-        Y = np.random.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
+        rng = np.random if random_state is None else np.random.RandomState(random_state)
+        Y = rng.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
     else:
         raise ValueError((f"The argument init is of the type {type(Yinit)}. "
                           "Currently, PaCMAP only supports user supplied "
@@ -992,7 +992,8 @@ def pacmap_fit(
         intermediate,
         inter_snapshots,
         pca_solution=False,
-        tsvd=None
+        tsvd=None,
+        random_state=None
 ):
     '''PaCMAP optimization for new data.
     '''
@@ -1020,10 +1021,9 @@ def pacmap_fit(
             Y = np.concatenate(
                 [embedding, 0.01 * tsvd.transform(X).astype(np.float32)])
     elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
-        if _RANDOM_STATE is not None:
-            np.random.seed(_RANDOM_STATE)
+        rng = np.random if random_state is None else np.random.RandomState(random_state)
         Y = np.concatenate(
-            [embedding, 0.0001 * np.random.normal(size=[X.shape[0], n_dims]).astype(np.float32)])
+            [embedding, 0.0001 * rng.normal(size=[X.shape[0], n_dims]).astype(np.float32)])
     else:
         raise ValueError((f"The argument init is of the type {type(Yinit)}. "
                           "Currently, PaCMAP only supports user supplied "
@@ -1239,9 +1239,11 @@ class PaCMAP(BaseEstimator):
         Steps must be nonempty, strictly increasing integers between 0 and the
         total number of iterations. For shorter runs, provide steps in that range.
 
-    random_state: int, optional
-        Random state for the pacmap instance.
-        Setting random state is useful for repeatability.
+    random_state: int or None, default=None
+        Seed for pair sampling and random initialization in this estimator.
+        Seeded initialization uses a local NumPy generator, independently of
+        other estimator instances. None leaves sampling and random
+        initialization unseeded.
 
     save_tree: bool, default=False
         Whether to save the annoy index tree after finding the nearest neighbor pairs.
@@ -1299,20 +1301,10 @@ class PaCMAP(BaseEstimator):
         self.knn_backend = knn_backend
         self.numba_threads = numba_threads
 
-        global _RANDOM_STATE
         if random_state is not None:
             assert (isinstance(random_state, int))
-            self.random_state = random_state
-            _RANDOM_STATE = random_state  # Set random state for numba functions
-            logger.warning(f'Warning: random state is set to {_RANDOM_STATE}.')
-        else:
-            try:
-                if _RANDOM_STATE is not None:
-                    logger.warning('Warning: random state is removed.')
-            except NameError:
-                pass
-            self.random_state = 0
-            _RANDOM_STATE = None  # Reset random state
+            logger.warning(f'Warning: random state is set to {random_state}.')
+        self.random_state = random_state
 
         # Raise error on initialization with an incorrect distance metric.
         VALID_METRICS = {"angular", "euclidean", "manhattan", "hamming", "dot", "precomputed"}
@@ -1439,8 +1431,10 @@ class PaCMAP(BaseEstimator):
         n, dim = X.shape
         if n <= 1:
             raise ValueError("The sample size must be larger than 1.")
+        # Preserve the historical PCA seed for an unspecified estimator seed.
+        pca_seed = 0 if self.random_state is None else self.random_state
         X, pca_solution, tsvd, self.xmin, self.xmax, self.xmean = preprocess_X(
-            X, self.distance, self.apply_pca, self.verbose, self.random_state, dim, self.n_components)
+            X, self.distance, self.apply_pca, self.verbose, pca_seed, dim, self.n_components)
         self.tsvd_transformer = tsvd
         self.pca_solution = pca_solution
         # Deciding the number of pairs
@@ -1458,7 +1452,7 @@ class PaCMAP(BaseEstimator):
                 self.apply_pca,
                 self.verbose,
                 self.intermediate,
-                _RANDOM_STATE,
+                self.random_state,
                 self.knn_backend
             ), self.verbose
         )
@@ -1480,7 +1474,8 @@ class PaCMAP(BaseEstimator):
             self.intermediate,
             self.intermediate_snapshots,
             pca_solution,
-            self.tsvd_transformer
+            self.tsvd_transformer,
+            random_state=self.random_state,
         )
         if not save_pairs:
             self.del_pairs()
@@ -1565,13 +1560,15 @@ class PaCMAP(BaseEstimator):
                                                  self.tree,
                                                  self.distance,
                                                  self.verbose,
-                                                 self.knn_backend
+                                                 self.knn_backend,
+                                                 random_state=self.random_state,
                                                  )
         # Initialize and Optimize the embedding
         Y, intermediate_states = pacmap_fit(X, self.embedding_, self.n_components, self.pair_XP, self.lr,
                                             self.num_iters, init, self.verbose,
                                             self.intermediate, self.intermediate_snapshots,
-                                            self.pca_solution, self.tsvd_transformer)
+                                            self.pca_solution, self.tsvd_transformer,
+                                            random_state=self.random_state)
 
         if not save_pairs:
             self.pair_XP = None
@@ -1598,7 +1595,8 @@ class PaCMAP(BaseEstimator):
         print_verbose("Finding pairs", self.verbose)
         if self.pair_neighbors is None:
             self.pair_neighbors, self.pair_MN, self.pair_FP, self.tree = generate_pair(
-                X, self.n_neighbors, self.n_MN, self.n_FP, self.distance, self.verbose, self.knn_backend
+                X, self.n_neighbors, self.n_MN, self.n_FP, self.distance, self.verbose, self.knn_backend,
+                random_state=self.random_state,
             )
             print_verbose("Pairs sampled successfully.", self.verbose)
         elif self.pair_MN is None and self.pair_FP is None:
@@ -1607,7 +1605,8 @@ class PaCMAP(BaseEstimator):
             assert self.pair_neighbors.shape == (
                 X.shape[0] * self.n_neighbors, 2), "The shape of the user provided nearest neighbor pairs is incorrect."
             self.pair_neighbors, self.pair_MN, self.pair_FP = generate_pair_no_neighbors(
-                X, self.n_neighbors, self.n_MN, self.n_FP, self.pair_neighbors, self.distance, self.verbose
+                X, self.n_neighbors, self.n_MN, self.n_FP, self.pair_neighbors, self.distance, self.verbose,
+                random_state=self.random_state,
             )
             print_verbose("Pairs sampled successfully.", self.verbose)
         else:
@@ -1749,7 +1748,8 @@ def localmap(
         inter_snapshots,
         pca_solution,
         low_dist_thres,
-        tsvd=None
+        tsvd=None,
+        random_state=None
 ):
     start_time = time.time()
     n, _ = X.shape
@@ -1774,9 +1774,8 @@ def localmap(
         else:
             Y = 0.01 * tsvd.transform(X).astype(np.float32)
     elif (isinstance(Yinit, str) and Yinit == "random"):  # random or hamming distance
-        if _RANDOM_STATE is not None:
-            np.random.seed(_RANDOM_STATE)
-        Y = np.random.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
+        rng = np.random if random_state is None else np.random.RandomState(random_state)
+        Y = rng.normal(size=[n, n_dims]).astype(np.float32) * 0.0001
     else:
         raise ValueError((f"The argument init is of the type {type(Yinit)}. "
                           "Currently, PaCMAP only supports user supplied "
@@ -1890,9 +1889,11 @@ class LocalMAP(PaCMAP):
         Steps must be nonempty, strictly increasing integers between 0 and the
         total number of iterations. For shorter runs, provide steps in that range.
 
-    random_state: int, optional
-        Random state for the pacmap instance.
-        Setting random state is useful for repeatability.
+    random_state: int or None, default=None
+        Seed for pair sampling and random initialization in this estimator.
+        Seeded initialization uses a local NumPy generator, independently of
+        other estimator instances. None leaves sampling and random
+        initialization unseeded.
 
     save_tree: bool, default=False
         Whether to save the annoy index tree after finding the nearest neighbor pairs.
@@ -1967,8 +1968,10 @@ class LocalMAP(PaCMAP):
         n, dim = X.shape
         if n <= 0:
             raise ValueError("The sample size must be larger than 0")
+        # Preserve the historical PCA seed for an unspecified estimator seed.
+        pca_seed = 0 if self.random_state is None else self.random_state
         X, pca_solution, tsvd, self.xmin, self.xmax, self.xmean = preprocess_X(
-            X, self.distance, self.apply_pca, self.verbose, self.random_state, dim, self.n_components)
+            X, self.distance, self.apply_pca, self.verbose, pca_seed, dim, self.n_components)
         self.tsvd_transformer = tsvd
         self.pca_solution = pca_solution
         # Deciding the number of pairs
@@ -1987,7 +1990,7 @@ class LocalMAP(PaCMAP):
                 self.verbose,
                 self.intermediate,
                 self.low_dist_thres,
-                _RANDOM_STATE,
+                self.random_state,
                 self.knn_backend
             ), self.verbose
         )
@@ -2010,7 +2013,8 @@ class LocalMAP(PaCMAP):
             self.intermediate_snapshots,
             pca_solution,
             self.low_dist_thres,
-            self.tsvd_transformer
+            self.tsvd_transformer,
+            random_state=self.random_state,
         )
         if not save_pairs:
             self.del_pairs()
