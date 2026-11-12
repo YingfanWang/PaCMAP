@@ -13,6 +13,8 @@ def get_available_backends():
     except ImportError: pass
     try: import voyager; backends.append('voyager')
     except ImportError: pass
+    try: import mlxvs; backends.append('mlxvs')
+    except ImportError: pass
     return backends
 
 def get_backend_metric_pairs():

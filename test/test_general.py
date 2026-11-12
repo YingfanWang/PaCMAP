@@ -167,7 +167,8 @@ def test_pacmap_save(tmp_path, backend, sample_data):
     ext_map = {
         'annoy': '.ann',
         'faiss': '.faiss',
-        'voyager': '.voyager'
+        'voyager': '.voyager',
+        'mlxvs': '.safetensors',
     }
     
     tree_ext = ext_map.get(backend, '.ann') # Fallback to .ann as default

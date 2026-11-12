@@ -29,6 +29,13 @@ try:
 except ImportError:
     voyager = None
 
+# Optional: nearest neighbors on the GPU of Apple silicon Macs
+try:
+    import mlx.core as mx
+    import mlxvs
+except ImportError:
+    mlxvs = None
+
 global _RANDOM_STATE
 _RANDOM_STATE = None
 
@@ -590,6 +597,13 @@ def generate_extra_pair_basis(basis,
                 tree.add_items(basis,num_threads=1)
             else:
                 tree.add_items(basis)
+
+        elif knn_backend == 'mlxvs':
+            if mlxvs is None:
+                raise ImportError("knn_backend='mlxvs' requested, but mlxvs is not installed.")
+            tree = mlxvs.CagraIndex.build(
+                _mlxvs_rows(basis, distance), min(32, n - 1), _mlxvs_metric(distance)
+            )
             
 
         else:
@@ -605,6 +619,7 @@ def generate_extra_pair_basis(basis,
     is_annoy = AnnoyIndex is not None and isinstance(tree, AnnoyIndex)
     is_faiss = isinstance(tree, faiss.Index)
     is_voyager = voyager and isinstance(tree, voyager.Index)
+    is_mlxvs = mlxvs is not None and isinstance(tree, mlxvs.CagraIndex)
     
     # Determine 'n' (number of items in basis)
     if is_annoy:
@@ -613,6 +628,8 @@ def generate_extra_pair_basis(basis,
         n = tree.ntotal
     elif is_voyager:
         n = tree.num_elements
+    elif is_mlxvs:
+        n = len(tree)
     else:
         # Fallback if tree was reconstructed locally above, n is defined
         pass 
@@ -649,6 +666,15 @@ def generate_extra_pair_basis(basis,
              knn_distances = np.sqrt(D).astype(np.float32)
         nbrs = I.astype(np.int32)
         
+    elif is_mlxvs:
+        I, D = tree.search(
+            _mlxvs_rows(X, distance),
+            n_neighbors_extra,
+            itopk_size=max(64, n_neighbors_extra),
+        )
+        nbrs = np.asarray(I).astype(np.int32)
+        knn_distances = _mlxvs_distances(D, distance)
+
     elif is_voyager or knn_backend == 'voyager':
         I, D = tree.query(X, k=n_neighbors_extra)
         nbrs = I.astype(np.int32)
@@ -660,6 +686,35 @@ def generate_extra_pair_basis(basis,
     pair_neighbors = sample_neighbors_pair_basis(
         n, X, knn_distances, nbrs, n_neighbors)
     return pair_neighbors
+
+
+def _mlxvs_metric(distance):
+    """The mlxvs metric for a PaCMAP distance: angular rows are normalized
+    first, so their inner product is the cosine similarity."""
+    if distance == "euclidean":
+        return "l2"
+    if distance == "angular":
+        return "inner_product"
+    raise NotImplementedError(f"mlxvs backend does not support {distance} metric in this implementation.")
+
+
+def _mlxvs_rows(X, distance):
+    """Rows as mlxvs reads them: float32, unit rows for angular."""
+    data = np.ascontiguousarray(X, dtype=np.float32)
+    if distance == "angular":
+        norms = np.linalg.norm(data, axis=1, keepdims=True)
+        data = data / np.maximum(norms, np.finfo(np.float32).tiny)
+    return data
+
+
+def _mlxvs_distances(scores, distance):
+    """mlxvs scores (squared euclidean, or cosine similarity) as PaCMAP's
+    distances (euclidean, or sqrt(2 (1 - cos)) for angular, as the other
+    backends)."""
+    scores = np.asarray(scores, dtype=np.float32)
+    if distance == "angular":
+        return np.sqrt(2 * (1 - np.minimum(scores, 1.0))).astype(np.float32)
+    return np.sqrt(np.maximum(scores, 0)).astype(np.float32)
 
 
 def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_state):
@@ -756,6 +811,21 @@ def compute_nearest_neighbors(X, n_neighbors, distance, knn_backend, random_stat
         # Exclude self
         nbrs = I[:, 1:].astype(np.int32)
         knn_distances = np.sqrt(D[:, 1:]).astype(np.float32)
+
+    elif knn_backend == 'mlxvs':
+        if mlxvs is None:
+            raise ImportError("knn_backend='mlxvs' requested, but mlxvs is not installed.")
+        metric = _mlxvs_metric(distance)
+        data = _mlxvs_rows(X, distance)
+        # The k-NN graph on the GPU: exact up to 4096 points (so the same on
+        # every run), NN-Descent above
+        ids, scores = mlxvs.all_neighbors(data, n_neighbors, metric)
+        ids = np.asarray(ids)
+        nbrs = ids.astype(np.int32)
+        knn_distances = _mlxvs_distances(scores, distance)
+        # A CAGRA search index for transform(), pruned from the same graph
+        graph = mlxvs.cagra_optimize(ids, min(32, n_neighbors))
+        tree = mlxvs.CagraIndex(mx.array(data), graph, metric)
 
     else:
         raise ValueError(f"Unknown knn_backend: {knn_backend}")
@@ -1079,6 +1149,7 @@ def save(instance, common_prefix: str):
         is_annoy = AnnoyIndex is not None and isinstance(instance.tree, AnnoyIndex)
         is_faiss = faiss is not None and isinstance(instance.tree, faiss.Index)
         is_voyager = voyager is not None and isinstance(instance.tree, voyager.Index)
+        is_mlxvs = mlxvs is not None and isinstance(instance.tree, mlxvs.CagraIndex)
 
         if is_annoy:
             instance.tree.save(f"{common_prefix}.ann")
@@ -1089,6 +1160,9 @@ def save(instance, common_prefix: str):
         elif is_voyager:
             instance.tree.save(f"{common_prefix}.voyager")
             extra_info = f", and the Voyager Index is saved at {common_prefix}.voyager"
+        elif is_mlxvs:
+            instance.tree.save(f"{common_prefix}.safetensors")
+            extra_info = f", and the mlxvs Index is saved at {common_prefix}.safetensors"
         
         instance.tree = None  # Remove the tree for pickle
 
@@ -1128,6 +1202,9 @@ def attach_index(reducer, index_path: str):
                 reducer.tree = voyager.Index.load(fp)
         else:
             reducer.tree = voyager.Index.load(index_path)
+    elif backend == 'mlxvs':
+        if mlxvs is None: raise ImportError("Cannot load mlxvs index: mlxvs module not found.")
+        reducer.tree = mlxvs.CagraIndex.load(index_path)
     else:
         raise ValueError(f"Unknown knn_backend: {backend}")
         
@@ -1162,7 +1239,8 @@ def load(
     ext_map = {
         'annoy': '.ann',
         'faiss': '.faiss',
-        'voyager': '.voyager'
+        'voyager': '.voyager',
+        'mlxvs': '.safetensors',
     }
     default_ext = ext_map.get(backend, '.ann')
 
@@ -1248,8 +1326,10 @@ class PaCMAP(BaseEstimator):
         Default to False for memory saving. Setting this option to True can make `transform()` method faster.
 
     knn_backend: str, default="faiss"
-        The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager'.
+        The backend library to use for Nearest Neighbor search. Options: 'annoy', 'faiss', 'voyager', 'mlxvs'.
         'faiss' is the default and generally faster. 'annoy' and 'voyager' are also available.
+        'mlxvs' runs on the GPU of Apple silicon Macs (``pip install mlxvs``) and supports the
+        'euclidean' and 'angular' distances.
         Ignored when ``distance="precomputed"``.
 
     numba_threads: int or None, default=None
@@ -1341,6 +1421,9 @@ class PaCMAP(BaseEstimator):
             raise ImportError("knn_backend='faiss' requested, but faiss is not installed.")
         if self.knn_backend == "voyager" and voyager is None:
             raise ImportError("knn_backend='voyager' requested, but voyager is not installed.")
+        if self.knn_backend == "mlxvs" and mlxvs is None:
+            raise ImportError("knn_backend='mlxvs' requested, but mlxvs is not installed "
+                              "(macOS on Apple silicon only: `pip install mlxvs`).")
 
     def decide_num_pairs(self, n):
         if self.n_neighbors is None:
