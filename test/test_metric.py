@@ -26,7 +26,7 @@ def test_pacmap_metric_unknown_fails():
     with pytest.raises(NotImplementedError):
         pacmap.PaCMAP(distance='unknown')
 
-@pytest.mark.parametrize("backend", [b for b in get_available_backends() if b != 'voyager'])
+@pytest.mark.parametrize("backend", [b for b in get_available_backends() if b not in ('voyager', 'mlxvs')])
 def test_pacmap_metric_deterministic_manhattan(backend, sample_data):
     """Test PaCMAP deterministic behavior with Manhattan distance."""
     b = pacmap.PaCMAP(random_state=10, distance='manhattan', knn_backend=backend)
@@ -55,7 +55,7 @@ def test_pacmap_metric_hamming(backend, sample_data):
     out = pm.fit_transform(sample_data, init='random')
     assert out.shape == (1000, 2)
 
-@pytest.mark.parametrize("backend", [b for b in get_available_backends() if b != 'voyager'])
+@pytest.mark.parametrize("backend", [b for b in get_available_backends() if b not in ('voyager', 'mlxvs')])
 def test_pacmap_fashion_mnist_manhattan(backend):
     """Test PaCMAP with Fashion-MNIST using Manhattan distance."""
     try:

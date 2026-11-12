@@ -47,6 +47,7 @@ annoy = ["annoy>=1.17,<2"]
 voyager-pypi = ["voyager>=2.0"]  # For Python 3.8-3.12
 voyager-git = ["voyager @ git+https://github.com/spotify/voyager.git#subdirectory=python"]  # For Python 3.13+
 voyager = ["voyager>=2.0"]  # Default to PyPI
+mlxvs = ["mlxvs>=0.9.1; sys_platform == 'darwin' and platform_machine == 'arm64'"]  # GPU of Apple silicon Macs
 all = ["annoy>=1.17,<2", "voyager>=2.0"]
 all-git = ["annoy>=1.17,<2", "voyager @ git+https://github.com/spotify/voyager.git#subdirectory=python"]
 
